@@ -30,14 +30,14 @@ if (!mongoUri) {
 async function seedAdmin() {
   try {
     console.log("Connecting to MongoDB...");
-    await mongoose.connect(mongoUri);
+    await mongoose.connect(mongoUri!); // Non-null assertion: we've already checked it exists above
     console.log("MongoDB connected successfully");
 
     console.log("Creating admin account...");
     console.log(`Email: ${adminEmail}`);
 
     // Check if user already exists
-    const existingUser = await User.findOne({ email: adminEmail.toLowerCase() });
+    const existingUser = await User.findOne({ email: adminEmail!.toLowerCase() });
     if (existingUser) {
       console.log("Admin account already exists. No action needed.");
       await mongoose.disconnect();
@@ -46,8 +46,8 @@ async function seedAdmin() {
 
     // Create new user
     const user = new User({
-      email: adminEmail.toLowerCase(),
-      password: adminPassword,
+      email: adminEmail!.toLowerCase(),
+      password: adminPassword!,
     });
 
     await user.save();
