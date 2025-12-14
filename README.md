@@ -1,4 +1,4 @@
-# Order Management System
+# Shree Fashion - Order Management System
 
 A modern order management application built with Next.js, MongoDB, and JWT authentication.
 
