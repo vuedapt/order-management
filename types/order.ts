@@ -18,3 +18,14 @@ export interface OrderFormData {
   stockCount: number;
 }
 
+export interface OrderItem {
+  itemId: string;
+  itemName: string;
+  stockCount: number;
+}
+
+export interface MultiOrderFormData {
+  clientName: string;
+  items: OrderItem[];
+}
+

@@ -25,6 +25,7 @@ export default function OrderList() {
     clientName: "",
     timeRange: "all",
   });
+  const [debouncedFilters, setDebouncedFilters] = useState<OrderFilters>(filters);
   const [pagination, setPagination] = useState<PaginationParams>({
     page: 1,
     pageSize: PAGE_SIZE,
@@ -32,10 +33,20 @@ export default function OrderList() {
   const [totalPages, setTotalPages] = useState(1);
   const [total, setTotal] = useState(0);
 
+  // Debounce filter changes (1000ms delay)
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedFilters(filters);
+      setPagination((prev) => ({ ...prev, page: 1 }));
+    }, 1000);
+
+    return () => clearTimeout(timer);
+  }, [filters]);
+
   const loadOrders = useCallback(async () => {
     try {
       setLoading(true);
-      const result = await orderService.getOrders(filters, pagination);
+      const result = await orderService.getOrders(debouncedFilters, pagination);
       setOrders(result.orders as Order[]);
       setTotalPages(result.totalPages);
       setTotal(result.total);
@@ -44,16 +55,11 @@ export default function OrderList() {
     } finally {
       setLoading(false);
     }
-  }, [filters, pagination]);
+  }, [debouncedFilters, pagination]);
 
   useEffect(() => {
     loadOrders();
   }, [loadOrders]);
-
-  // Reset to page 1 when filters change
-  useEffect(() => {
-    setPagination((prev) => ({ ...prev, page: 1 }));
-  }, [filters]);
 
   const handlePageSizeChange = (newPageSize: number) => {
     setPagination({ page: 1, pageSize: newPageSize });
@@ -61,12 +67,30 @@ export default function OrderList() {
 
   const handleCreate = async (data: any) => {
     const startTime = performance.now();
-    console.log("[OrderList] Creating order...", data);
+    console.log("[OrderList] Creating order(s)...", data);
     
     try {
-      const orderId = await orderService.createOrder(data);
-      const createDuration = performance.now() - startTime;
-      console.log(`[OrderList] Order created in ${createDuration.toFixed(2)}ms, reloading list...`);
+      // Check if it's multi-order form data
+      if (data.items && Array.isArray(data.items)) {
+        // Create multiple orders for the same client
+        const createPromises = data.items.map((item: any) =>
+          orderService.createOrder({
+            itemId: item.itemId,
+            itemName: item.itemName,
+            clientName: data.clientName,
+            stockCount: item.stockCount,
+          })
+        );
+        
+        await Promise.all(createPromises);
+        const createDuration = performance.now() - startTime;
+        console.log(`[OrderList] ${data.items.length} order(s) created in ${createDuration.toFixed(2)}ms, reloading list...`);
+      } else {
+        // Single order
+        await orderService.createOrder(data);
+        const createDuration = performance.now() - startTime;
+        console.log(`[OrderList] Order created in ${createDuration.toFixed(2)}ms, reloading list...`);
+      }
       
       const reloadStartTime = performance.now();
       await loadOrders();
@@ -74,7 +98,6 @@ export default function OrderList() {
       const totalDuration = performance.now() - startTime;
       
       console.log(`[OrderList] Order creation complete in ${totalDuration.toFixed(2)}ms`, {
-        createDuration: `${createDuration.toFixed(2)}ms`,
         reloadDuration: `${reloadDuration.toFixed(2)}ms`,
         totalDuration: `${totalDuration.toFixed(2)}ms`,
       });
@@ -82,7 +105,7 @@ export default function OrderList() {
       setShowForm(false);
     } catch (error) {
       const duration = performance.now() - startTime;
-      console.error(`[OrderList] Error creating order after ${duration.toFixed(2)}ms:`, error);
+      console.error(`[OrderList] Error creating order(s) after ${duration.toFixed(2)}ms:`, error);
       throw error;
     }
   };
