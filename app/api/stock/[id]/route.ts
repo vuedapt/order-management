@@ -18,7 +18,7 @@ async function verifyAuth(request: NextRequest) {
 // PUT - Update stock item
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> | { id: string } }
 ) {
   try {
     const auth = await verifyAuth(request);
@@ -28,11 +28,15 @@ export async function PUT(
 
     await connectDB();
 
+    // Handle both sync and async params (Next.js 15+ uses async)
+    const resolvedParams = params instanceof Promise ? await params : params;
+    const id = resolvedParams.id;
+
     const body = await request.json();
     const { itemId, itemName, stockCount } = body;
 
     const stock = await Stock.findByIdAndUpdate(
-      params.id,
+      id,
       {
         itemId,
         itemName,
@@ -56,7 +60,7 @@ export async function PUT(
   } catch (error: any) {
     console.error("Error updating stock:", error);
     return NextResponse.json(
-      { error: "Internal server error" },
+      { error: error.message || "Internal server error" },
       { status: 500 }
     );
   }
@@ -65,7 +69,7 @@ export async function PUT(
 // DELETE - Delete stock item
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> | { id: string } }
 ) {
   try {
     const auth = await verifyAuth(request);
@@ -75,7 +79,11 @@ export async function DELETE(
 
     await connectDB();
 
-    const stock = await Stock.findByIdAndDelete(params.id);
+    // Handle both sync and async params (Next.js 15+ uses async)
+    const resolvedParams = params instanceof Promise ? await params : params;
+    const id = resolvedParams.id;
+
+    const stock = await Stock.findByIdAndDelete(id);
 
     if (!stock) {
       return NextResponse.json({ error: "Stock item not found" }, { status: 404 });
@@ -85,7 +93,7 @@ export async function DELETE(
   } catch (error: any) {
     console.error("Error deleting stock:", error);
     return NextResponse.json(
-      { error: "Internal server error" },
+      { error: error.message || "Internal server error" },
       { status: 500 }
     );
   }
