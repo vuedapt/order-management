@@ -59,20 +59,20 @@ export default function OrderFiltersComponent({
     filters.timeRange !== "all";
 
   return (
-    <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-6">
-      <div className="mb-4 flex items-center justify-between">
-        <h2 className="text-lg font-semibold text-black dark:text-zinc-50">Filters</h2>
+    <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-4 sm:p-6">
+      <div className="mb-4 flex items-center justify-between gap-2">
+        <h2 className="text-base sm:text-lg font-semibold text-black dark:text-zinc-50">Filters</h2>
         {hasActiveFilters && (
           <button
             onClick={clearFilters}
-            className="cursor-pointer text-sm text-teal-500 hover:text-teal-600 dark:text-teal-400 transition-all duration-200"
+            className="cursor-pointer text-sm text-teal-500 hover:text-teal-600 dark:text-teal-400 transition-all duration-200 whitespace-nowrap"
           >
             Clear All
           </button>
         )}
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
         <div>
           <Autocomplete
             id="itemId"

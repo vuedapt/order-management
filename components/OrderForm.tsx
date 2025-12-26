@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { OrderFormData, Order, OrderItem, MultiOrderFormData } from "@/types/order";
 import { orderService } from "@/lib/services/orderService";
+import { stockService, StockItem } from "@/lib/services/stockService";
 import Autocomplete from "./Autocomplete";
 
 interface OrderFormProps {
@@ -25,26 +26,23 @@ export default function OrderForm({ order, onSubmit, onCancel }: OrderFormProps)
   const [isMultiMode, setIsMultiMode] = useState(!order);
   const [loading, setLoading] = useState(false);
   const [clientNames, setClientNames] = useState<string[]>([]);
-  const [itemIds, setItemIds] = useState<string[]>([]);
-  const [itemNames, setItemNames] = useState<string[]>([]);
+  const [stockItems, setStockItems] = useState<StockItem[]>([]);
 
   useEffect(() => {
-    const fetchFilterOptions = async () => {
+    const fetchData = async () => {
       try {
-        const [clientNamesData, itemIdsData, itemNamesData] = await Promise.all([
+        const [clientNamesData, stocksData] = await Promise.all([
           orderService.getClientNames(),
-          orderService.getItemIds(),
-          orderService.getItemNames(),
+          stockService.getStocks({ page: 1, pageSize: 1000 }),
         ]);
         setClientNames(clientNamesData);
-        setItemIds(itemIdsData);
-        setItemNames(itemNamesData);
+        setStockItems(stocksData.stocks);
       } catch (error) {
-        console.error("Error fetching filter options:", error);
+        console.error("Error fetching data:", error);
       }
     };
 
-    fetchFilterOptions();
+    fetchData();
   }, []);
 
   useEffect(() => {
@@ -157,27 +155,50 @@ export default function OrderForm({ order, onSubmit, onCancel }: OrderFormProps)
               </div>
 
               <div>
-                <Autocomplete
-                  id={`itemId-${index}`}
-                  label="Item ID"
-                  value={item.itemId}
-                  onChange={(value) => updateItem(index, "itemId", value)}
-                  options={itemIds}
-                  placeholder="Enter item ID"
+                <label
+                  htmlFor={`item-${index}`}
+                  className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1"
+                >
+                  Item
+                </label>
+                <select
+                  id={`item-${index}`}
+                  value={item.itemId || ""}
+                  onChange={(e) => {
+                    const selectedStock = stockItems.find(s => s.itemId === e.target.value);
+                    if (selectedStock) {
+                      const updatedItems = [...multiFormData.items];
+                      updatedItems[index] = {
+                        itemId: selectedStock.itemId,
+                        itemName: selectedStock.itemName,
+                        stockCount: updatedItems[index].stockCount,
+                      };
+                      setMultiFormData({ ...multiFormData, items: updatedItems });
+                    } else {
+                      const updatedItems = [...multiFormData.items];
+                      updatedItems[index] = {
+                        itemId: "",
+                        itemName: "",
+                        stockCount: updatedItems[index].stockCount,
+                      };
+                      setMultiFormData({ ...multiFormData, items: updatedItems });
+                    }
+                  }}
+                  className="w-full rounded-md border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 px-3 py-2 text-sm text-black dark:text-zinc-50 focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500 appearance-none bg-[url('data:image/svg+xml;charset=UTF-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22currentColor%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpolyline%20points%3D%226%209%2012%2015%2018%209%22%3E%3C%2Fpolyline%3E%3C%2Fsvg%3E')] bg-[length:16px_16px] bg-[right_0.5rem_center] bg-no-repeat pr-10 cursor-pointer transition-all duration-200"
                   required
-                />
-              </div>
-
-              <div>
-                <Autocomplete
-                  id={`itemName-${index}`}
-                  label="Item Name"
-                  value={item.itemName}
-                  onChange={(value) => updateItem(index, "itemName", value)}
-                  options={itemNames}
-                  placeholder="Enter item name"
-                  required
-                />
+                >
+                  <option value="">Select an item</option>
+                  {stockItems.map((stock) => (
+                    <option key={stock.id} value={stock.itemId}>
+                      {stock.itemId} - {stock.itemName} (Available: {stock.stockCount})
+                    </option>
+                  ))}
+                </select>
+                {item.itemId && (
+                  <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
+                    Available stock: {stockItems.find(s => s.itemId === item.itemId)?.stockCount || 0}
+                  </p>
+                )}
               </div>
 
               <div>
@@ -228,27 +249,46 @@ export default function OrderForm({ order, onSubmit, onCancel }: OrderFormProps)
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
       <div>
-        <Autocomplete
-          id="itemId"
-          label="Item ID"
-          value={formData.itemId}
-          onChange={(value) => setFormData({ ...formData, itemId: value })}
-          options={itemIds}
-          placeholder="Enter item ID"
+        <label
+          htmlFor="item"
+          className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1"
+        >
+          Item
+        </label>
+        <select
+          id="item"
+          value={formData.itemId || ""}
+          onChange={(e) => {
+            const selectedStock = stockItems.find(s => s.itemId === e.target.value);
+            if (selectedStock) {
+              setFormData({
+                ...formData,
+                itemId: selectedStock.itemId,
+                itemName: selectedStock.itemName,
+              });
+            } else {
+              setFormData({
+                ...formData,
+                itemId: "",
+                itemName: "",
+              });
+            }
+          }}
+          className="w-full rounded-md border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 px-3 py-2 text-sm text-black dark:text-zinc-50 focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500 appearance-none bg-[url('data:image/svg+xml;charset=UTF-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22currentColor%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpolyline%20points%3D%226%209%2012%2015%2018%209%22%3E%3C%2Fpolyline%3E%3C%2Fsvg%3E')] bg-[length:16px_16px] bg-[right_0.5rem_center] bg-no-repeat pr-10 cursor-pointer transition-all duration-200"
           required
-        />
-      </div>
-
-      <div>
-        <Autocomplete
-          id="itemName"
-          label="Item Name"
-          value={formData.itemName}
-          onChange={(value) => setFormData({ ...formData, itemName: value })}
-          options={itemNames}
-          placeholder="Enter item name"
-          required
-        />
+        >
+          <option value="">Select an item</option>
+          {stockItems.map((stock) => (
+            <option key={stock.id} value={stock.itemId}>
+              {stock.itemId} - {stock.itemName} (Available: {stock.stockCount})
+            </option>
+          ))}
+        </select>
+        {formData.itemId && (
+          <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
+            Available stock: {stockItems.find(s => s.itemId === formData.itemId)?.stockCount || 0}
+          </p>
+        )}
       </div>
 
       <div>

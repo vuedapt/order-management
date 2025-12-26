@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import AuthForm from "@/components/AuthForm";
 import OrderList from "@/components/OrderList";
+import StockList from "@/components/StockList";
 import NavHeader from "@/components/NavHeader";
 import ProfileModal from "@/components/ProfileModal";
 import Footer from "@/components/Footer";
@@ -11,6 +12,7 @@ import Footer from "@/components/Footer";
 export default function Home() {
   const { user, loading, logout } = useAuth();
   const [showProfile, setShowProfile] = useState(false);
+  const [currentPage, setCurrentPage] = useState<"orders" | "stock">("orders");
 
   if (loading) {
     return (
@@ -30,9 +32,11 @@ export default function Home() {
         userEmail={user.email} 
         onLogout={logout}
         onProfileClick={() => setShowProfile(true)}
+        currentPage={currentPage}
+        onPageChange={setCurrentPage}
       />
-      <main className="mx-auto max-w-7xl flex-1 px-4 py-8 sm:px-6 lg:px-8">
-        <OrderList />
+      <main className="mx-auto max-w-7xl flex-1 px-4 sm:px-6 py-4 sm:py-8 lg:px-8 w-full overflow-x-hidden">
+        {currentPage === "orders" ? <OrderList /> : <StockList />}
       </main>
       <Footer />
       {showProfile && (

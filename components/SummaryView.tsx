@@ -103,20 +103,20 @@ export default function SummaryView({ onClose }: SummaryViewProps) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 p-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 p-2 sm:p-4 overflow-y-auto">
       <div
         ref={modalRef}
-        className="relative w-full max-w-6xl max-h-[90vh] overflow-y-auto rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-6"
+        className="relative w-full max-w-6xl max-h-[90vh] overflow-y-auto rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-4 sm:p-6 my-auto"
       >
-        <div className="flex items-center justify-between mb-6">
-          <h1 className="text-3xl font-bold text-black dark:text-zinc-50">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-0 mb-4 sm:mb-6">
+          <h1 className="text-2xl sm:text-3xl font-bold text-black dark:text-zinc-50">
             Summary
           </h1>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 sm:gap-3">
             <div className="relative">
               <button
                 onClick={() => setShowExportMenu(!showExportMenu)}
-                className="cursor-pointer rounded-md bg-teal-500 px-4 py-2 text-sm font-medium text-white hover:bg-teal-600 focus:outline-none focus:ring-2 focus:ring-teal-500 transition-all duration-200"
+                className="cursor-pointer rounded-md bg-teal-500 px-3 sm:px-4 py-2 text-sm font-medium text-white hover:bg-teal-600 focus:outline-none focus:ring-2 focus:ring-teal-500 transition-all duration-200"
               >
                 Export
               </button>
@@ -147,7 +147,7 @@ export default function SummaryView({ onClose }: SummaryViewProps) {
             </div>
             <button
               onClick={onClose}
-              className="cursor-pointer rounded-md border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 px-4 py-2 text-sm font-medium text-zinc-700 dark:text-zinc-300 hover:bg-zinc-50 dark:hover:bg-zinc-700 focus:outline-none focus:ring-2 focus:ring-teal-500 transition-all duration-200"
+              className="cursor-pointer rounded-md border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 px-3 sm:px-4 py-2 text-sm font-medium text-zinc-700 dark:text-zinc-300 hover:bg-zinc-50 dark:hover:bg-zinc-700 focus:outline-none focus:ring-2 focus:ring-teal-500 transition-all duration-200"
             >
               Close
             </button>
@@ -174,39 +174,43 @@ export default function SummaryView({ onClose }: SummaryViewProps) {
               <p className="text-zinc-600 dark:text-zinc-400">No data available</p>
             ) : (
               <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead className="bg-zinc-50 dark:bg-zinc-800">
-                    <tr>
-                      <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
-                        Item ID
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
-                        Item Name
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
-                        Total Stock Count
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-zinc-200 dark:divide-zinc-800">
-                    {summaryByItem.map((row, index) => (
-                      <tr
-                        key={index}
-                        className="hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors"
-                      >
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-black dark:text-zinc-50">
-                          {row.itemId}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-black dark:text-zinc-50">
-                          {row.itemName}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-black dark:text-zinc-50">
-                          {row.totalStock}
-                        </td>
+                <div className="min-w-full inline-block align-middle">
+                  <table className="w-full min-w-[600px]">
+                    <thead className="bg-zinc-50 dark:bg-zinc-800">
+                      <tr>
+                        <th className="px-4 sm:px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
+                          Item ID
+                        </th>
+                        <th className="px-4 sm:px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
+                          Item Name
+                        </th>
+                        <th className="px-4 sm:px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
+                          Total Stock Count
+                        </th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody className="divide-y divide-zinc-200 dark:divide-zinc-800">
+                      {summaryByItem.map((row, index) => (
+                        <tr
+                          key={index}
+                          className="hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors"
+                        >
+                          <td className="px-4 sm:px-6 py-4 text-sm text-black dark:text-zinc-50">
+                            {row.itemId}
+                          </td>
+                          <td className="px-4 sm:px-6 py-4 text-sm text-black dark:text-zinc-50">
+                            <div className="max-w-[200px] truncate" title={row.itemName}>
+                              {row.itemName}
+                            </div>
+                          </td>
+                          <td className="px-4 sm:px-6 py-4 text-sm font-medium text-black dark:text-zinc-50">
+                            {row.totalStock}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             )}
           </div>
@@ -219,45 +223,51 @@ export default function SummaryView({ onClose }: SummaryViewProps) {
               <p className="text-zinc-600 dark:text-zinc-400">No data available</p>
             ) : (
               <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead className="bg-zinc-50 dark:bg-zinc-800">
-                    <tr>
-                      <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
-                        Client
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
-                        Item ID
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
-                        Item Name
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
-                        Total Stock Count
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-zinc-200 dark:divide-zinc-800">
-                    {summaryByClientItem.map((row, index) => (
-                      <tr
-                        key={index}
-                        className="hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors"
-                      >
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-black dark:text-zinc-50">
-                          {row.client}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-black dark:text-zinc-50">
-                          {row.itemId}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-black dark:text-zinc-50">
-                          {row.itemName}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-black dark:text-zinc-50">
-                          {row.totalStock}
-                        </td>
+                <div className="min-w-full inline-block align-middle">
+                  <table className="w-full min-w-[700px]">
+                    <thead className="bg-zinc-50 dark:bg-zinc-800">
+                      <tr>
+                        <th className="px-4 sm:px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
+                          Client
+                        </th>
+                        <th className="px-4 sm:px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
+                          Item ID
+                        </th>
+                        <th className="px-4 sm:px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
+                          Item Name
+                        </th>
+                        <th className="px-4 sm:px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
+                          Total Stock Count
+                        </th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody className="divide-y divide-zinc-200 dark:divide-zinc-800">
+                      {summaryByClientItem.map((row, index) => (
+                        <tr
+                          key={index}
+                          className="hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors"
+                        >
+                          <td className="px-4 sm:px-6 py-4 text-sm text-black dark:text-zinc-50">
+                            <div className="max-w-[150px] truncate" title={row.client}>
+                              {row.client}
+                            </div>
+                          </td>
+                          <td className="px-4 sm:px-6 py-4 text-sm text-black dark:text-zinc-50">
+                            {row.itemId}
+                          </td>
+                          <td className="px-4 sm:px-6 py-4 text-sm text-black dark:text-zinc-50">
+                            <div className="max-w-[200px] truncate" title={row.itemName}>
+                              {row.itemName}
+                            </div>
+                          </td>
+                          <td className="px-4 sm:px-6 py-4 text-sm font-medium text-black dark:text-zinc-50">
+                            {row.totalStock}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             )}
           </div>

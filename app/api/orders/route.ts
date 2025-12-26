@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import connectDB from "@/lib/mongodb/connect";
 import Order from "@/models/Order";
+import Stock from "@/models/Stock";
 import { verifyToken } from "@/lib/auth/jwt";
 import { formatDateIST, formatTimeIST } from "@/lib/utils/dateTime";
 import { generateNextOrderId } from "@/lib/utils/orderIdGenerator";
@@ -231,9 +232,31 @@ export async function POST(request: NextRequest) {
     });
 
     try {
-      console.log("[API POST] Step 8: Saving order to database");
+      console.log("[API POST] Step 8: Decreasing stock");
+      // Decrease stock for the item
+      const stock = await Stock.findOne({ itemId });
+      if (!stock) {
+        return NextResponse.json(
+          { error: `Item ${itemId} not found in stock` },
+          { status: 404 }
+        );
+      }
+      if (stock.stockCount < parseInt(stockCount)) {
+        return NextResponse.json(
+          { error: `Insufficient stock. Available: ${stock.stockCount}, Requested: ${parseInt(stockCount)}` },
+          { status: 400 }
+        );
+      }
+      stock.stockCount -= parseInt(stockCount);
+      await stock.save();
+      console.log("[API POST] Step 8.1: Stock decreased successfully", {
+        itemId,
+        newStockCount: stock.stockCount,
+      });
+
+      console.log("[API POST] Step 9: Saving order to database");
       await order.save();
-      console.log("[API POST] Step 9: Order saved successfully", { 
+      console.log("[API POST] Step 10: Order saved successfully", { 
         id: order._id.toString(), 
         orderId: order.orderId,
         orderIdAfterSave: order.orderId,
@@ -252,9 +275,9 @@ export async function POST(request: NextRequest) {
     }
 
     // Verify the order was saved with orderId
-    console.log("[API POST] Step 10: Verifying saved order from DB");
+    console.log("[API POST] Step 11: Verifying saved order from DB");
     const savedOrder = await Order.findById(order._id).lean();
-    console.log("[API POST] Step 11: Verified saved order from DB", { 
+    console.log("[API POST] Step 12: Verified saved order from DB", { 
       id: savedOrder?._id?.toString(), 
       orderId: savedOrder?.orderId,
       hasOrderId: !!savedOrder?.orderId,
@@ -263,7 +286,7 @@ export async function POST(request: NextRequest) {
     });
 
     const finalOrderId = savedOrder?.orderId || order.orderId || nextOrderId;
-    console.log("[API POST] Step 12: Preparing response", {
+    console.log("[API POST] Step 13: Preparing response", {
       finalOrderId,
       sources: {
         fromDB: savedOrder?.orderId,
@@ -285,7 +308,7 @@ export async function POST(request: NextRequest) {
       updatedAt: order.updatedAt,
     };
 
-    console.log("[API POST] Step 13: Final response", response);
+    console.log("[API POST] Step 14: Final response", response);
 
     return NextResponse.json(response);
   } catch (error: any) {

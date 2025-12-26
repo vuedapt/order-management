@@ -1,31 +1,31 @@
 "use client";
 
-import { Order } from "@/types/order";
+import { StockItem } from "@/lib/services/stockService";
 
-interface OrderTableProps {
-  orders: Order[];
-  onEdit: (order: Order) => void;
-  onDelete: (orderId: string) => void;
+interface StockTableProps {
+  stocks: StockItem[];
+  onEdit: (stock: StockItem) => void;
+  onDelete: (id: string) => void;
   currentPage: number;
   pageSize: number;
   total: number;
   onPageSizeChange: (pageSize: number) => void;
 }
 
-export default function OrderTable({
-  orders,
-  onEdit,
+export default function StockTable({ 
+  stocks, 
+  onEdit, 
   onDelete,
   currentPage,
   pageSize,
   total,
   onPageSizeChange,
-}: OrderTableProps) {
-  if (orders.length === 0) {
+}: StockTableProps) {
+  if (stocks.length === 0) {
     return (
       <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-8 text-center">
         <p className="text-zinc-600 dark:text-zinc-400">
-          No orders found. Try adjusting your filters.
+          No stock items found.
         </p>
       </div>
     );
@@ -34,12 +34,9 @@ export default function OrderTable({
   return (
     <div className="overflow-x-auto rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900">
       <div className="min-w-full inline-block align-middle">
-        <table className="w-full min-w-[800px]">
+        <table className="w-full min-w-[600px]">
         <thead className="bg-zinc-50 dark:bg-zinc-800">
           <tr>
-            <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
-              Order ID
-            </th>
             <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
               Item ID
             </th>
@@ -47,16 +44,7 @@ export default function OrderTable({
               Item Name
             </th>
             <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
-              Client Name
-            </th>
-            <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
               Stock Count
-            </th>
-            <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
-              Date (IST)
-            </th>
-            <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
-              Time (IST)
             </th>
             <th className="px-6 py-3 text-right text-xs font-medium uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
               Actions
@@ -64,46 +52,32 @@ export default function OrderTable({
           </tr>
         </thead>
         <tbody className="divide-y divide-zinc-200 dark:divide-zinc-800">
-          {orders.map((order) => (
+          {stocks.map((stock) => (
             <tr
-              key={order.id}
+              key={stock.id}
               className="hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors cursor-pointer"
             >
-              <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-black dark:text-zinc-50">
-                {order.orderId || "N/A"}
+              <td className="px-4 sm:px-6 py-4 whitespace-nowrap text-sm text-black dark:text-zinc-50">
+                {stock.itemId}
               </td>
-              <td className="px-6 py-4 whitespace-nowrap text-sm text-black dark:text-zinc-50">
-                {order.itemId}
-              </td>
-              <td className="px-6 py-4 text-sm text-black dark:text-zinc-50">
-                <div className="max-w-[200px] truncate" title={order.itemName}>
-                  {order.itemName}
+              <td className="px-4 sm:px-6 py-4 text-sm text-black dark:text-zinc-50">
+                <div className="max-w-[200px] truncate" title={stock.itemName}>
+                  {stock.itemName}
                 </div>
               </td>
-              <td className="px-6 py-4 text-sm text-black dark:text-zinc-50">
-                <div className="max-w-[150px] truncate" title={order.clientName}>
-                  {order.clientName}
-                </div>
+              <td className="px-4 sm:px-6 py-4 whitespace-nowrap text-sm font-medium text-black dark:text-zinc-50">
+                {stock.stockCount}
               </td>
-              <td className="px-6 py-4 whitespace-nowrap text-sm text-black dark:text-zinc-50">
-                {order.stockCount}
-              </td>
-              <td className="px-6 py-4 whitespace-nowrap text-sm text-black dark:text-zinc-50">
-                {order.date}
-              </td>
-              <td className="px-6 py-4 whitespace-nowrap text-sm text-black dark:text-zinc-50">
-                {order.time}
-              </td>
-              <td className="px-6 py-4 text-right text-sm font-medium">
+              <td className="px-4 sm:px-6 py-4 text-right text-sm font-medium">
                 <div className="flex justify-end gap-2 flex-wrap">
                   <button
-                    onClick={() => onEdit(order)}
+                    onClick={() => onEdit(stock)}
                     className="cursor-pointer rounded-md bg-teal-500 px-2 sm:px-3 py-1.5 text-xs font-medium text-white hover:bg-teal-600 focus:outline-none focus:ring-2 focus:ring-teal-500 transition-all duration-200 whitespace-nowrap"
                   >
                     Edit
                   </button>
                   <button
-                    onClick={() => onDelete(order.id)}
+                    onClick={() => onDelete(stock.id)}
                     className="cursor-pointer rounded-md bg-red-400 px-2 sm:px-3 py-1.5 text-xs font-medium text-white hover:bg-red-500 focus:outline-none focus:ring-2 focus:ring-red-500 transition-all duration-200 whitespace-nowrap"
                   >
                     Delete
@@ -115,11 +89,11 @@ export default function OrderTable({
         </tbody>
         <tfoot className="bg-zinc-50 dark:bg-zinc-800 border-t border-zinc-200 dark:border-zinc-700">
           <tr>
-            <td colSpan={8} className="px-4 sm:px-6 py-3">
+            <td colSpan={4} className="px-4 sm:px-6 py-3">
               <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-4 text-sm text-zinc-600 dark:text-zinc-400">
                 <div className="flex items-center gap-2 sm:gap-4">
                   <span>
-                    Showing <span className="font-medium text-black dark:text-zinc-50">{orders.length}</span> of{" "}
+                    Showing <span className="font-medium text-black dark:text-zinc-50">{stocks.length}</span> of{" "}
                     <span className="font-medium text-black dark:text-zinc-50">{total}</span>
                   </span>
                 </div>
