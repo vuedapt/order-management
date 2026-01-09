@@ -11,7 +11,7 @@ export async function GET(request: NextRequest) {
 
     const buffer = generateStockTemplate();
     
-    return new NextResponse(buffer, {
+    return new NextResponse(buffer as any, {
       headers: {
         "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         "Content-Disposition": "attachment; filename=stock-template.xlsx",

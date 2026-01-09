@@ -8,10 +8,10 @@ export function getCurrentDate(): string {
 
 export function getCurrentTime(): string {
   const now = new Date();
-  const hours = String(now.getHours()).padStart(2, "0");
+  const hoursNum = now.getHours();
   const minutes = String(now.getMinutes()).padStart(2, "0");
-  const ampm = hours >= 12 ? "PM" : "AM";
-  const displayHours = hours > 12 ? hours - 12 : hours === 0 ? 12 : hours;
+  const ampm = hoursNum >= 12 ? "PM" : "AM";
+  const displayHours = hoursNum > 12 ? hoursNum - 12 : hoursNum === 0 ? 12 : hoursNum;
   return `${String(displayHours).padStart(2, "0")}:${minutes} ${ampm}`;
 }
 

@@ -36,8 +36,7 @@ const InventorySchema = new Schema<IInventory>(
   }
 );
 
-// Indexes
-InventorySchema.index({ itemId: 1 });
+// Note: itemId already has an index from unique: true, so no need to add it again
 
 const Inventory = mongoose.models.Inventory || mongoose.model<IInventory>("Inventory", InventorySchema);
 

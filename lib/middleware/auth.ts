@@ -36,16 +36,16 @@ export async function authenticateRequest(request: NextRequest): Promise<{
   return payload;
 }
 
-export function requireAuth(request: NextRequest): {
+export async function requireAuth(request: NextRequest): Promise<{
   userId: string;
   email: string;
   role?: string;
-} {
-  const auth = authenticateRequest(request);
+}> {
+  const auth = await authenticateRequest(request);
   if (!auth) {
     throw new Error("Unauthorized");
   }
-  return auth as { userId: string; email: string; role?: string };
+  return auth;
 }
 
 export async function requireAdmin(request: NextRequest): Promise<{

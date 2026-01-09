@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { OrderFormData, Order, OrderItem, MultiOrderFormData } from "@/types/order";
+import { OrderFormData, Order, OrderItem, MultiOrderFormData, SingleOrderFormData } from "@/types/order";
 import { StockItem } from "@/types/stock";
 import Autocomplete from "./Autocomplete";
 
@@ -12,7 +12,7 @@ interface OrderFormProps {
 }
 
 export default function OrderForm({ order, onSubmit, onCancel }: OrderFormProps) {
-  const [formData, setFormData] = useState<OrderFormData>({
+  const [formData, setFormData] = useState<SingleOrderFormData>({
     itemId: "",
     itemName: "",
     clientName: "",
@@ -56,12 +56,24 @@ export default function OrderForm({ order, onSubmit, onCancel }: OrderFormProps)
 
   useEffect(() => {
     if (order) {
-      setFormData({
-        itemId: order.itemId,
-        itemName: order.itemName,
-        clientName: order.clientName,
-        stockCount: order.stockCount,
-      });
+      // Handle new Order structure with items array
+      const firstItem = order.items && order.items.length > 0 ? order.items[0] : null;
+      if (firstItem) {
+        setFormData({
+          itemId: firstItem.itemId,
+          itemName: firstItem.itemName,
+          clientName: order.clientName,
+          stockCount: firstItem.stockCount,
+        });
+      } else {
+        // Fallback for legacy orders (shouldn't happen with new structure)
+        setFormData({
+          itemId: "",
+          itemName: "",
+          clientName: order.clientName,
+          stockCount: 0,
+        });
+      }
       setIsMultiMode(false);
     }
   }, [order]);
@@ -77,7 +89,17 @@ export default function OrderForm({ order, onSubmit, onCancel }: OrderFormProps)
           items: [{ itemId: "", itemName: "", stockCount: 0 }],
         });
       } else {
-        await onSubmit(formData);
+        // Convert single form data to OrderFormData format
+        const orderFormData: OrderFormData = {
+          clientName: formData.clientName,
+          items: [{
+            itemId: formData.itemId,
+            itemName: formData.itemName,
+            stockCount: formData.stockCount,
+            billedStockCount: 0,
+          }],
+        };
+        await onSubmit(orderFormData);
         if (!order) {
           setFormData({
             itemId: "",
