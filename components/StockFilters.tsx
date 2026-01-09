@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { stockService } from "@/lib/services/stockService";
 import Autocomplete from "./Autocomplete";
 
 interface StockFilters {
@@ -22,19 +21,27 @@ export default function StockFiltersComponent({
   const [itemNames, setItemNames] = useState<string[]>([]);
 
   useEffect(() => {
-    const fetchFilterOptions = async () => {
+    const loadFilterOptions = async () => {
       try {
-        const data = await stockService.getStocks({ page: 1, pageSize: 1000 });
-        const uniqueItemIds = [...new Set(data.stocks.map((s) => s.itemId))];
-        const uniqueItemNames = [...new Set(data.stocks.map((s) => s.itemName))];
-        setItemIds(uniqueItemIds);
-        setItemNames(uniqueItemNames);
+        const response = await fetch("/api/stock?page=1&pageSize=1000");
+        if (response.ok) {
+          const data = await response.json();
+          const itemIdsSet = new Set<string>();
+          const itemNamesSet = new Set<string>();
+
+          data.stocks?.forEach((stock: any) => {
+            if (stock.itemId) itemIdsSet.add(stock.itemId);
+            if (stock.itemName) itemNamesSet.add(stock.itemName);
+          });
+
+          setItemIds(Array.from(itemIdsSet).sort());
+          setItemNames(Array.from(itemNamesSet).sort());
+        }
       } catch (error) {
-        console.error("Error fetching filter options:", error);
+        console.error("Error loading filter options:", error);
       }
     };
-
-    fetchFilterOptions();
+    loadFilterOptions();
   }, []);
 
   const handleFilterChange = (key: keyof StockFilters, value: string) => {

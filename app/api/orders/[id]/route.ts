@@ -1,117 +1,143 @@
 import { NextRequest, NextResponse } from "next/server";
 import connectDB from "@/lib/mongodb/connect";
 import Order from "@/models/Order";
-import { verifyToken } from "@/lib/auth/jwt";
-import { formatDateIST, formatTimeIST } from "@/lib/utils/dateTime";
+import { authenticateRequest } from "@/lib/middleware/auth";
+import mongoose from "mongoose";
 
-async function verifyAuth(request: NextRequest) {
-  const token = request.cookies.get("token")?.value;
-  if (!token) {
-    return null;
-  }
-  try {
-    return verifyToken(token);
-  } catch {
-    return null;
-  }
-}
-
-// PUT - Update order
-export async function PUT(
+export async function GET(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> | { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const auth = await verifyAuth(request);
+    const auth = await authenticateRequest(request);
     if (!auth) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     await connectDB();
+    const { id } = await params;
 
-    // Handle both sync and async params (Next.js 15+ uses async)
-    const resolvedParams = params instanceof Promise ? await params : params;
-    const id = resolvedParams.id;
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return NextResponse.json({ error: "Invalid order ID" }, { status: 400 });
+    }
 
-    const body = await request.json();
-    const { itemId, itemName, clientName, stockCount } = body;
-
-    // Auto-update date and time to current IST when order is updated
-    const currentDate = formatDateIST(new Date());
-    const currentTime = formatTimeIST(new Date());
-
-    const order = await Order.findByIdAndUpdate(
-      id,
-      {
-        itemId,
-        itemName,
-        clientName,
-        stockCount: parseInt(stockCount),
-        date: currentDate,
-        time: currentTime,
-      },
-      { new: true, runValidators: true }
-    );
+    const order = await Order.findOne({ _id: id, archived: false }).lean();
 
     if (!order) {
       return NextResponse.json({ error: "Order not found" }, { status: 404 });
     }
 
-    return NextResponse.json({
+    const transformedOrder = {
       id: order._id.toString(),
       orderId: order.orderId,
-      itemId: order.itemId,
-      itemName: order.itemName,
       clientName: order.clientName,
-      stockCount: order.stockCount,
+      items: order.items,
       date: order.date,
       time: order.time,
+      status: order.status,
       createdAt: order.createdAt,
       updatedAt: order.updatedAt,
-    });
+    };
+
+    return NextResponse.json(transformedOrder);
   } catch (error: any) {
-    console.error("Error updating order:", error);
+    console.error("Get order error:", error);
     return NextResponse.json(
-      { error: "Internal server error" },
+      { error: "Failed to fetch order" },
       { status: 500 }
     );
   }
 }
 
-// DELETE - Delete order
-export async function DELETE(
+export async function PUT(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> | { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const auth = await verifyAuth(request);
+    const auth = await authenticateRequest(request);
     if (!auth) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     await connectDB();
+    const { id } = await params;
 
-    // Handle both sync and async params (Next.js 15+ uses async)
-    const resolvedParams = params instanceof Promise ? await params : params;
-    const id = resolvedParams.id;
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return NextResponse.json({ error: "Invalid order ID" }, { status: 400 });
+    }
 
-    console.log("[API] Deleting order with ID:", id);
+    const body = await request.json();
+    const { clientName, items, status } = body;
 
-    const order = await Order.findByIdAndDelete(id);
-
+    const order = await Order.findOne({ _id: id, archived: false });
     if (!order) {
-      console.error("[API] Order not found with ID:", id);
       return NextResponse.json({ error: "Order not found" }, { status: 404 });
     }
 
-    console.log("[API] Order deleted successfully:", order._id);
-    return NextResponse.json({ success: true });
+    // Update fields
+    if (clientName) order.clientName = clientName;
+    if (items && Array.isArray(items)) {
+      order.items = items.map((item: any) => ({
+        itemId: item.itemId,
+        itemName: item.itemName,
+        stockCount: parseInt(item.stockCount) || 0,
+        billedStockCount: item.billedStockCount || 0,
+      }));
+    }
+    if (status) order.status = status;
+
+    await order.save();
+
+    const transformedOrder = {
+      id: order._id.toString(),
+      orderId: order.orderId,
+      clientName: order.clientName,
+      items: order.items,
+      date: order.date,
+      time: order.time,
+      status: order.status,
+      createdAt: order.createdAt,
+      updatedAt: order.updatedAt,
+    };
+
+    return NextResponse.json(transformedOrder);
   } catch (error: any) {
-    console.error("[API] Error deleting order:", error);
+    console.error("Update order error:", error);
     return NextResponse.json(
-      { error: error.message || "Internal server error" },
+      { error: "Failed to update order" },
       { status: 500 }
     );
   }
 }
 
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const auth = await authenticateRequest(request);
+    if (!auth) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    await connectDB();
+    const { id } = await params;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return NextResponse.json({ error: "Invalid order ID" }, { status: 400 });
+    }
+
+    const order = await Order.findByIdAndDelete(id);
+    if (!order) {
+      return NextResponse.json({ error: "Order not found" }, { status: 404 });
+    }
+
+    return NextResponse.json({ message: "Order deleted successfully" });
+  } catch (error: any) {
+    console.error("Delete order error:", error);
+    return NextResponse.json(
+      { error: "Failed to delete order" },
+      { status: 500 }
+    );
+  }
+}

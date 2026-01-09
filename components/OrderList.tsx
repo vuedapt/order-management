@@ -1,8 +1,7 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Order } from "@/types/order";
-import { orderService } from "@/lib/services/orderService";
 import { OrderFilters, PaginationParams } from "@/types/filter";
 import OrderForm from "./OrderForm";
 import OrderTable from "./OrderTable";
@@ -10,11 +9,8 @@ import OrderFiltersComponent from "./OrderFilters";
 import Pagination from "./Pagination";
 import PageHeader from "./PageHeader";
 import SummaryView from "./SummaryView";
-import { PiMicrosoftExcelLogoFill } from "react-icons/pi";
-import { MdFileDownload } from "react-icons/md";
 import Snackbar from "./Snackbar";
 import IssueLog, { Issue } from "./IssueLog";
-import { issueService } from "@/lib/services/issueService";
 
 const PAGE_SIZE = 10;
 
@@ -24,8 +20,6 @@ export default function OrderList() {
   const [showForm, setShowForm] = useState(false);
   const [showSummary, setShowSummary] = useState(false);
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
-  const [uploading, setUploading] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
   const [snackbar, setSnackbar] = useState<{
     isOpen: boolean;
     message: string;
@@ -61,12 +55,25 @@ export default function OrderList() {
   }, [filters]);
 
   const loadOrders = useCallback(async () => {
+    setLoading(true);
     try {
-      setLoading(true);
-      const result = await orderService.getOrders(debouncedFilters, pagination);
-      setOrders(result.orders as Order[]);
-      setTotalPages(result.totalPages);
-      setTotal(result.total);
+      const params = new URLSearchParams({
+        page: pagination.page.toString(),
+        pageSize: pagination.pageSize.toString(),
+        ...(debouncedFilters.itemId && { itemId: debouncedFilters.itemId }),
+        ...(debouncedFilters.itemName && { itemName: debouncedFilters.itemName }),
+        ...(debouncedFilters.clientName && { clientName: debouncedFilters.clientName }),
+        ...(debouncedFilters.timeRange && { timeRange: debouncedFilters.timeRange }),
+      });
+
+      const response = await fetch(`/api/orders?${params.toString()}`);
+      if (!response.ok) {
+        throw new Error("Failed to load orders");
+      }
+      const data = await response.json();
+      setOrders(data.orders || []);
+      setTotalPages(data.totalPages || 1);
+      setTotal(data.total || 0);
     } catch (error) {
       console.error("Error loading orders:", error);
     } finally {
@@ -78,12 +85,15 @@ export default function OrderList() {
     loadOrders();
   }, [loadOrders]);
 
-  // Load issues from database
+  // Load issues
   useEffect(() => {
     const loadIssues = async () => {
       try {
-        const data = await issueService.getIssues();
-        setIssues(data);
+        const response = await fetch("/api/issues");
+        if (response.ok) {
+          const data = await response.json();
+          setIssues(data || []);
+        }
       } catch (error) {
         console.error("Error loading issues:", error);
       }
@@ -96,137 +106,97 @@ export default function OrderList() {
   };
 
   const handleCreate = async (data: any) => {
-    const startTime = performance.now();
-    console.log("[OrderList] Creating order(s)...", data);
-    
     try {
-      // Check if it's multi-order form data
-      if (data.items && Array.isArray(data.items)) {
-        // Create multiple orders for the same client
-        const createPromises = data.items.map((item: any) =>
-          orderService.createOrder({
-            itemId: item.itemId,
-            itemName: item.itemName,
-            clientName: data.clientName,
-            stockCount: item.stockCount,
-          })
-        );
-        
-        await Promise.all(createPromises);
-        const createDuration = performance.now() - startTime;
-        console.log(`[OrderList] ${data.items.length} order(s) created in ${createDuration.toFixed(2)}ms, reloading list...`);
-      } else {
-        // Single order
-        await orderService.createOrder(data);
-        const createDuration = performance.now() - startTime;
-        console.log(`[OrderList] Order created in ${createDuration.toFixed(2)}ms, reloading list...`);
-      }
-      
-      const reloadStartTime = performance.now();
-      await loadOrders();
-      const reloadDuration = performance.now() - reloadStartTime;
-      const totalDuration = performance.now() - startTime;
-      
-      console.log(`[OrderList] Order creation complete in ${totalDuration.toFixed(2)}ms`, {
-        reloadDuration: `${reloadDuration.toFixed(2)}ms`,
-        totalDuration: `${totalDuration.toFixed(2)}ms`,
+      const response = await fetch("/api/orders", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(data),
       });
-      
-      setShowForm(false);
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || "Failed to create order");
+      }
+
       setSnackbar({
         isOpen: true,
-        message: data.items && Array.isArray(data.items)
-          ? `Successfully created ${data.items.length} order(s)!`
-          : "Order created successfully!",
+        message: "Order created successfully!",
         type: "success",
       });
+      setShowForm(false);
+      loadOrders();
     } catch (error: any) {
-      const duration = performance.now() - startTime;
-      console.error(`[OrderList] Error creating order(s) after ${duration.toFixed(2)}ms:`, error);
       setSnackbar({
         isOpen: true,
-        message: error.message || "Failed to create order(s)",
+        message: error.message || "Failed to create order",
         type: "error",
       });
-      throw error;
     }
   };
 
   const handleUpdate = async (data: any) => {
-    if (editingOrder) {
-      const startTime = performance.now();
-      console.log("[OrderList] Updating order...", { orderId: editingOrder.id, data });
-      
-      try {
-        await orderService.updateOrder(editingOrder.id, data);
-        const updateDuration = performance.now() - startTime;
-        console.log(`[OrderList] Order updated in ${updateDuration.toFixed(2)}ms, reloading list...`);
-        
-        const reloadStartTime = performance.now();
-        await loadOrders();
-        const reloadDuration = performance.now() - reloadStartTime;
-        const totalDuration = performance.now() - startTime;
-        
-        console.log(`[OrderList] Order update complete in ${totalDuration.toFixed(2)}ms`, {
-          updateDuration: `${updateDuration.toFixed(2)}ms`,
-          reloadDuration: `${reloadDuration.toFixed(2)}ms`,
-          totalDuration: `${totalDuration.toFixed(2)}ms`,
-        });
-        
-        setEditingOrder(null);
-        setShowForm(false);
-        setSnackbar({
-          isOpen: true,
-          message: "Order updated successfully!",
-          type: "success",
-        });
-      } catch (error: any) {
-        const duration = performance.now() - startTime;
-        console.error(`[OrderList] Error updating order after ${duration.toFixed(2)}ms:`, error);
-        setSnackbar({
-          isOpen: true,
-          message: error.message || "Failed to update order",
-          type: "error",
-        });
-        throw error;
+    if (!editingOrder) return;
+
+    try {
+      const response = await fetch(`/api/orders/${editingOrder.id}`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(data),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || "Failed to update order");
       }
+
+      setSnackbar({
+        isOpen: true,
+        message: "Order updated successfully!",
+        type: "success",
+      });
+      setEditingOrder(null);
+      setShowForm(false);
+      loadOrders();
+    } catch (error: any) {
+      setSnackbar({
+        isOpen: true,
+        message: error.message || "Failed to update order",
+        type: "error",
+      });
     }
   };
 
   const handleDelete = async (orderId: string) => {
-    if (confirm("Are you sure you want to delete this order?")) {
-      const startTime = performance.now();
-      console.log("[OrderList] Deleting order...", { orderId });
-      
-      try {
-        await orderService.deleteOrder(orderId);
-        const deleteDuration = performance.now() - startTime;
-        console.log(`[OrderList] Order deleted in ${deleteDuration.toFixed(2)}ms, reloading list...`);
-        
-        const reloadStartTime = performance.now();
-        await loadOrders();
-        const reloadDuration = performance.now() - reloadStartTime;
-        const totalDuration = performance.now() - startTime;
-        
-        console.log(`[OrderList] Order deletion complete in ${totalDuration.toFixed(2)}ms`, {
-          deleteDuration: `${deleteDuration.toFixed(2)}ms`,
-          reloadDuration: `${reloadDuration.toFixed(2)}ms`,
-          totalDuration: `${totalDuration.toFixed(2)}ms`,
-        });
-        setSnackbar({
-          isOpen: true,
-          message: "Order deleted successfully!",
-          type: "success",
-        });
-      } catch (error: any) {
-        const duration = performance.now() - startTime;
-        console.error(`[OrderList] Error deleting order after ${duration.toFixed(2)}ms:`, error);
-        setSnackbar({
-          isOpen: true,
-          message: error.message || "Failed to delete order",
-          type: "error",
-        });
+    if (!confirm("Are you sure you want to delete this order?")) {
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/orders/${orderId}`, {
+        method: "DELETE",
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || "Failed to delete order");
       }
+
+      setSnackbar({
+        isOpen: true,
+        message: "Order deleted successfully!",
+        type: "success",
+      });
+      loadOrders();
+    } catch (error: any) {
+      setSnackbar({
+        isOpen: true,
+        message: error.message || "Failed to delete order",
+        type: "error",
+      });
     }
   };
 
@@ -249,105 +219,6 @@ export default function OrderList() {
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
-  const handleDownloadTemplate = async () => {
-    try {
-      const response = await fetch("/api/orders/template");
-      if (!response.ok) {
-        throw new Error("Failed to download template");
-      }
-      const blob = await response.blob();
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = "order-template.xlsx";
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      window.URL.revokeObjectURL(url);
-    } catch (error: any) {
-      console.error("Error downloading template:", error);
-      alert(error.message || "Failed to download template");
-    }
-  };
-
-  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-
-    setUploading(true);
-    try {
-      const formData = new FormData();
-      formData.append("file", file);
-
-      const response = await fetch("/api/orders/upload", {
-        method: "POST",
-        body: formData,
-      });
-
-      const result = await response.json();
-
-      if (!response.ok) {
-        throw new Error(result.error || "Failed to upload file");
-      }
-
-      // Reload orders
-      await loadOrders();
-
-      // Reset file input
-      if (fileInputRef.current) {
-        fileInputRef.current.value = "";
-      }
-
-      // Show results
-      if (result.errors > 0) {
-        const errorCount = result.errors;
-        const successCount = result.success;
-        
-        // Add errors to issue log (only insufficient stock errors)
-        if (result.details?.errors) {
-          const insufficientStockErrors = result.details.errors.filter((e: any) =>
-            e.error?.includes("Insufficient stock")
-          );
-          
-          if (insufficientStockErrors.length > 0) {
-            // Save issues to database
-            const newIssuesPromises = insufficientStockErrors.map((e: any) =>
-              issueService.createIssue({
-                row: e.row,
-                itemId: e.itemId || "",
-                error: e.error,
-              })
-            );
-            
-            const newIssues = await Promise.all(newIssuesPromises);
-            setIssues((prev) => [...prev, ...newIssues]);
-          }
-        }
-        
-        setSnackbar({
-          isOpen: true,
-          message: `Upload completed with errors. ${successCount} succeeded, ${errorCount} failed. Check issue log below.`,
-          type: "error",
-        });
-        console.log("Upload details:", result.details);
-      } else {
-        setSnackbar({
-          isOpen: true,
-          message: `Successfully uploaded ${result.success} order(s)!`,
-          type: "success",
-        });
-      }
-    } catch (error: any) {
-      console.error("Error uploading file:", error);
-      setSnackbar({
-        isOpen: true,
-        message: error.message || "Failed to upload file",
-        type: "error",
-      });
-    } finally {
-      setUploading(false);
-    }
-  };
 
   if (loading && orders.length === 0) {
     return (
@@ -382,32 +253,6 @@ export default function OrderList() {
         }
       />
 
-      {!showForm && (
-        <div className="flex flex-wrap items-center gap-2 sm:gap-3">
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept=".xlsx,.xls"
-            onChange={handleFileUpload}
-            className="hidden"
-            id="order-upload"
-          />
-          <label
-            htmlFor="order-upload"
-            className="cursor-pointer flex items-center gap-2 rounded-md border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 px-3 sm:px-4 py-2 text-sm font-medium text-zinc-700 dark:text-zinc-300 hover:bg-zinc-50 dark:hover:bg-zinc-700 focus:outline-none focus:ring-2 focus:ring-teal-500 transition-all duration-200 whitespace-nowrap"
-          >
-            <PiMicrosoftExcelLogoFill className={`text-base sm:text-lg ${uploading ? "text-zinc-400" : "text-green-700"}`} />
-            {uploading ? "Uploading..." : "Upload Excel"}
-          </label>
-          <button
-            onClick={handleDownloadTemplate}
-            className="cursor-pointer flex items-center gap-2 rounded-md border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 px-3 sm:px-4 py-2 text-sm font-medium text-zinc-700 dark:text-zinc-300 hover:bg-zinc-50 dark:hover:bg-zinc-700 focus:outline-none focus:ring-2 focus:ring-teal-500 transition-all duration-200 whitespace-nowrap"
-          >
-            <MdFileDownload className="text-base sm:text-lg" />
-            Download Template
-          </button>
-        </div>
-      )}
 
       {showForm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 p-4 overflow-y-auto">
@@ -470,7 +315,7 @@ export default function OrderList() {
           issues={issues}
           onResolve={async (id) => {
             try {
-              await issueService.resolveIssue(id);
+              // Frontend-only: API service removed. Connect to your backend API here.
               setIssues((prev) =>
                 prev.map((issue) =>
                   issue.id === id ? { ...issue, resolved: true } : issue
@@ -487,7 +332,7 @@ export default function OrderList() {
           }}
           onDismiss={async (id) => {
             try {
-              await issueService.deleteIssue(id);
+              // Frontend-only: API service removed. Connect to your backend API here.
               setIssues((prev) => prev.filter((issue) => issue.id !== id));
             } catch (error: any) {
               console.error("Error dismissing issue:", error);

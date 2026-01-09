@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
-import { stockService, StockItem, StockFormData, PaginationParams, StockFilters } from "@/lib/services/stockService";
+import { StockItem, StockFormData, StockFilters } from "@/types/stock";
+import { PaginationParams } from "@/types/filter";
 import StockForm from "./StockForm";
 import StockTable from "./StockTable";
 import PageHeader from "./PageHeader";
@@ -54,17 +55,28 @@ export default function StockList() {
   }, [filters]);
 
   const loadStocks = useCallback(async () => {
+    setLoading(true);
     try {
-      setLoading(true);
-      const data = await stockService.getStocks(pagination, debouncedFilters);
-      setStocks(data.stocks);
-      setTotalPages(data.totalPages);
-      setTotal(data.total);
+      const params = new URLSearchParams({
+        page: pagination.page.toString(),
+        pageSize: pagination.pageSize.toString(),
+        ...(debouncedFilters.itemId && { itemId: debouncedFilters.itemId }),
+        ...(debouncedFilters.itemName && { itemName: debouncedFilters.itemName }),
+      });
+
+      const response = await fetch(`/api/stock?${params.toString()}`);
+      if (!response.ok) {
+        throw new Error("Failed to load stocks");
+      }
+      const data = await response.json();
+      setStocks(data.stocks || []);
+      setTotalPages(data.totalPages || 1);
+      setTotal(data.total || 0);
     } catch (error) {
       console.error("Error loading stocks:", error);
       setSnackbar({
         isOpen: true,
-        message: "Failed to load stock items.",
+        message: "Error loading stock items.",
         type: "error",
       });
     } finally {
@@ -78,67 +90,96 @@ export default function StockList() {
 
   const handleCreate = async (data: StockFormData) => {
     try {
-      await stockService.createStock(data);
-      await loadStocks();
-      setShowForm(false);
+      const response = await fetch("/api/stock", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(data),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || "Failed to create stock item");
+      }
+
       setSnackbar({
         isOpen: true,
         message: "Stock item created successfully!",
         type: "success",
       });
+      setShowForm(false);
+      loadStocks();
     } catch (error: any) {
-      console.error("Error creating stock:", error);
       setSnackbar({
         isOpen: true,
         message: error.message || "Failed to create stock item",
         type: "error",
       });
-      throw error;
     }
   };
 
   const handleUpdate = async (data: StockFormData) => {
-    if (editingStock) {
-      try {
-        await stockService.updateStock(editingStock.id, data);
-        await loadStocks();
-        setEditingStock(null);
-        setShowForm(false);
-        setSnackbar({
-          isOpen: true,
-          message: "Stock item updated successfully!",
-          type: "success",
-        });
-      } catch (error: any) {
-        console.error("Error updating stock:", error);
-        setSnackbar({
-          isOpen: true,
-          message: error.message || "Failed to update stock item",
-          type: "error",
-        });
-        throw error;
+    if (!editingStock) return;
+
+    try {
+      const response = await fetch(`/api/stock/${editingStock.id}`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(data),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || "Failed to update stock item");
       }
+
+      setSnackbar({
+        isOpen: true,
+        message: "Stock item updated successfully!",
+        type: "success",
+      });
+      setEditingStock(null);
+      setShowForm(false);
+      loadStocks();
+    } catch (error: any) {
+      setSnackbar({
+        isOpen: true,
+        message: error.message || "Failed to update stock item",
+        type: "error",
+      });
     }
   };
 
   const handleDelete = async (id: string) => {
-    if (confirm("Are you sure you want to delete this stock item?")) {
-      try {
-        await stockService.deleteStock(id);
-        await loadStocks();
-        setSnackbar({
-          isOpen: true,
-          message: "Stock item deleted successfully!",
-          type: "success",
-        });
-      } catch (error: any) {
-        console.error("Error deleting stock:", error);
-        setSnackbar({
-          isOpen: true,
-          message: error.message || "Failed to delete stock item",
-          type: "error",
-        });
+    if (!confirm("Are you sure you want to delete this stock item?")) {
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/stock/${id}`, {
+        method: "DELETE",
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || "Failed to delete stock item");
       }
+
+      setSnackbar({
+        isOpen: true,
+        message: "Stock item deleted successfully!",
+        type: "success",
+      });
+      loadStocks();
+    } catch (error: any) {
+      setSnackbar({
+        isOpen: true,
+        message: error.message || "Failed to delete stock item",
+        type: "error",
+      });
     }
   };
 
@@ -200,7 +241,14 @@ export default function StockList() {
         body: formData,
       });
 
-      const result = await response.json();
+      let result;
+      try {
+        result = await response.json();
+      } catch (jsonError) {
+        // If response is not JSON, get text instead
+        const text = await response.text();
+        throw new Error(text || "Failed to upload file");
+      }
 
       if (!response.ok) {
         throw new Error(result.error || "Failed to upload file");
@@ -247,7 +295,7 @@ export default function StockList() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Stock Management"
+        title="Inventory Management"
         leftButton={
           !showForm && !showSummary
             ? {

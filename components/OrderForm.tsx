@@ -1,9 +1,8 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { OrderFormData, Order, OrderItem, MultiOrderFormData } from "@/types/order";
-import { orderService } from "@/lib/services/orderService";
-import { stockService, StockItem } from "@/lib/services/stockService";
+import { OrderFormData, Order, OrderItem, MultiOrderFormData, SingleOrderFormData } from "@/types/order";
+import { StockItem } from "@/types/stock";
 import Autocomplete from "./Autocomplete";
 
 interface OrderFormProps {
@@ -13,7 +12,7 @@ interface OrderFormProps {
 }
 
 export default function OrderForm({ order, onSubmit, onCancel }: OrderFormProps) {
-  const [formData, setFormData] = useState<OrderFormData>({
+  const [formData, setFormData] = useState<SingleOrderFormData>({
     itemId: "",
     itemName: "",
     clientName: "",
@@ -29,30 +28,52 @@ export default function OrderForm({ order, onSubmit, onCancel }: OrderFormProps)
   const [stockItems, setStockItems] = useState<StockItem[]>([]);
 
   useEffect(() => {
-    const fetchData = async () => {
+    const loadData = async () => {
       try {
-        const [clientNamesData, stocksData] = await Promise.all([
-          orderService.getClientNames(),
-          stockService.getStocks({ page: 1, pageSize: 1000 }),
-        ]);
-        setClientNames(clientNamesData);
-        setStockItems(stocksData.stocks);
+        // Load client names from orders
+        const ordersResponse = await fetch("/api/orders?page=1&pageSize=1000");
+        if (ordersResponse.ok) {
+          const ordersData = await ordersResponse.json();
+          const clientNamesSet = new Set<string>();
+          ordersData.orders?.forEach((order: any) => {
+            if (order.clientName) clientNamesSet.add(order.clientName);
+          });
+          setClientNames(Array.from(clientNamesSet).sort());
+        }
+
+        // Load stock items
+        const stockResponse = await fetch("/api/stock?page=1&pageSize=1000");
+        if (stockResponse.ok) {
+          const stockData = await stockResponse.json();
+          setStockItems(stockData.stocks || []);
+        }
       } catch (error) {
-        console.error("Error fetching data:", error);
+        console.error("Error loading form data:", error);
       }
     };
-
-    fetchData();
+    loadData();
   }, []);
 
   useEffect(() => {
     if (order) {
-      setFormData({
-        itemId: order.itemId,
-        itemName: order.itemName,
-        clientName: order.clientName,
-        stockCount: order.stockCount,
-      });
+      // Handle new Order structure with items array
+      const firstItem = order.items && order.items.length > 0 ? order.items[0] : null;
+      if (firstItem) {
+        setFormData({
+          itemId: firstItem.itemId,
+          itemName: firstItem.itemName,
+          clientName: order.clientName,
+          stockCount: firstItem.stockCount,
+        });
+      } else {
+        // Fallback for legacy orders (shouldn't happen with new structure)
+        setFormData({
+          itemId: "",
+          itemName: "",
+          clientName: order.clientName,
+          stockCount: 0,
+        });
+      }
       setIsMultiMode(false);
     }
   }, [order]);
@@ -68,7 +89,17 @@ export default function OrderForm({ order, onSubmit, onCancel }: OrderFormProps)
           items: [{ itemId: "", itemName: "", stockCount: 0 }],
         });
       } else {
-        await onSubmit(formData);
+        // Convert single form data to OrderFormData format
+        const orderFormData: OrderFormData = {
+          clientName: formData.clientName,
+          items: [{
+            itemId: formData.itemId,
+            itemName: formData.itemName,
+            stockCount: formData.stockCount,
+            billedStockCount: 0,
+          }],
+        };
+        await onSubmit(orderFormData);
         if (!order) {
           setFormData({
             itemId: "",

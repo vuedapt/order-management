@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
-import { stockService } from "@/lib/services/stockService";
 import { exportStockToPDF, exportStockToExcel, exportStockToCSV } from "@/lib/exports/stockExports";
 import type { StockExportData } from "@/lib/exports/stockTypes";
 import StockFiltersComponent from "./StockFilters";
@@ -46,12 +45,30 @@ export default function StockSummaryView({ onClose }: StockSummaryViewProps) {
   }, [onClose]);
 
   const loadSummary = useCallback(async () => {
+    setLoading(true);
     try {
-      setLoading(true);
-      const result = await stockService.getSummary(filters);
-      setStocks(result.stocks);
-      setTotalItems(result.totalItems);
-      setTotalStockCount(result.totalStockCount);
+      const params = new URLSearchParams({
+        page: "1",
+        pageSize: "1000",
+        ...(filters.itemId && { itemId: filters.itemId }),
+        ...(filters.itemName && { itemName: filters.itemName }),
+      });
+
+      const response = await fetch(`/api/stock?${params.toString()}`);
+      if (!response.ok) {
+        throw new Error("Failed to load stocks");
+      }
+      const data = await response.json();
+      const filtered = data.stocks || [];
+      const stockSummary = filtered.map((stock: any) => ({
+        itemId: stock.itemId,
+        itemName: stock.itemName,
+        stockCount: stock.stockCount,
+      }));
+      const totalStockCount = filtered.reduce((sum: number, stock: any) => sum + (stock.stockCount || 0), 0);
+      setStocks(stockSummary);
+      setTotalItems(filtered.length);
+      setTotalStockCount(totalStockCount);
     } catch (error) {
       console.error("Error loading stock summary:", error);
     } finally {

@@ -1,26 +1,23 @@
 import { NextRequest, NextResponse } from "next/server";
 import connectDB from "@/lib/mongodb/connect";
 import User from "@/models/User";
-import { verifyToken } from "@/lib/auth/jwt";
-
-async function verifyAuth(request: NextRequest) {
-  const token = request.cookies.get("token")?.value;
-  if (!token) {
-    return null;
-  }
-  try {
-    return verifyToken(token);
-  } catch {
-    return null;
-  }
-}
+import { getTokenFromRequest, verifyToken } from "@/lib/auth/jwt";
 
 export async function POST(request: NextRequest) {
   try {
-    const auth = await verifyAuth(request);
-    if (!auth) {
+    const token = getTokenFromRequest(request);
+    
+    if (!token) {
       return NextResponse.json(
-        { error: "Unauthorized" },
+        { error: "Not authenticated" },
+        { status: 401 }
+      );
+    }
+
+    const payload = verifyToken(token);
+    if (!payload) {
+      return NextResponse.json(
+        { error: "Invalid token" },
         { status: 401 }
       );
     }
@@ -42,8 +39,8 @@ export async function POST(request: NextRequest) {
     }
 
     await connectDB();
-
-    const user = await User.findById(auth.userId);
+    const user = await User.findById(payload.userId);
+    
     if (!user) {
       return NextResponse.json(
         { error: "User not found" },
@@ -60,18 +57,15 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Update password (the pre-save hook will hash it)
+    // Update password
     user.password = newPassword;
     await user.save();
 
-    return NextResponse.json({
-      success: true,
-      message: "Password changed successfully",
-    });
+    return NextResponse.json({ message: "Password changed successfully" });
   } catch (error: any) {
-    console.error("Error changing password:", error);
+    console.error("Change password error:", error);
     return NextResponse.json(
-      { error: "Internal server error" },
+      { error: "Failed to change password" },
       { status: 500 }
     );
   }

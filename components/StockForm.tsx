@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { StockFormData, StockItem } from "@/lib/services/stockService";
+import { StockFormData, StockItem } from "@/types/stock";
 
 interface StockFormProps {
   stock?: StockItem | null;

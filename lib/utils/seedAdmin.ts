@@ -16,7 +16,14 @@ export async function ensureAdminExists(): Promise<boolean> {
     // Check if admin already exists
     const existingUser = await User.findOne({ email: adminEmail.toLowerCase() });
     if (existingUser) {
-      console.log("[SeedAdmin] Admin account already exists");
+      // Ensure existing admin has admin role
+      if (existingUser.role !== "admin") {
+        existingUser.role = "admin";
+        await existingUser.save();
+        console.log("[SeedAdmin] Updated existing user to admin role");
+      } else {
+        console.log("[SeedAdmin] Admin account already exists");
+      }
       return true;
     }
 
@@ -24,6 +31,7 @@ export async function ensureAdminExists(): Promise<boolean> {
     const user = new User({
       email: adminEmail.toLowerCase(),
       password: adminPassword,
+      role: "admin",
     });
 
     await user.save();

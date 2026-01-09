@@ -5,6 +5,7 @@ export interface OrderFilters {
   itemName: string;
   clientName: string;
   timeRange: TimeRange;
+  status?: string;
 }
 
 export interface PaginationParams {

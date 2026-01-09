@@ -1,57 +1,44 @@
 import { NextRequest, NextResponse } from "next/server";
 import connectDB from "@/lib/mongodb/connect";
-import Issue from "@/models/Issue";
-import { verifyToken } from "@/lib/auth/jwt";
+import IssueLog from "@/models/IssueLog";
+import { authenticateRequest } from "@/lib/middleware/auth";
 
-async function verifyAuth(request: NextRequest) {
-  const token = request.cookies.get("token")?.value;
-  if (!token) {
-    return null;
-  }
-  try {
-    return verifyToken(token);
-  } catch {
-    return null;
-  }
-}
-
-// GET - Fetch all unresolved issues
 export async function GET(request: NextRequest) {
   try {
-    const auth = await verifyAuth(request);
+    const auth = await authenticateRequest(request);
     if (!auth) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     await connectDB();
 
-    const issues = await Issue.find({ resolved: false })
+    const issues = await IssueLog.find({ resolved: false, archived: false })
       .sort({ createdAt: -1 })
       .lean();
 
-    return NextResponse.json({
-      issues: issues.map((issue: any) => ({
-        id: issue._id.toString(),
-        row: issue.row,
-        itemId: issue.itemId,
-        error: issue.error,
-        timestamp: issue.createdAt,
-        resolved: issue.resolved,
-      })),
-    });
+    // Transform to match frontend format
+    const transformedIssues = issues.map((issue: any) => ({
+      id: issue._id.toString(),
+      row: issue.row,
+      itemId: issue.itemId || "",
+      error: issue.error,
+      timestamp: issue.createdAt,
+      resolved: issue.resolved,
+    }));
+
+    return NextResponse.json(transformedIssues);
   } catch (error: any) {
-    console.error("Error fetching issues:", error);
+    console.error("Get issues error:", error);
     return NextResponse.json(
-      { error: "Internal server error" },
+      { error: "Failed to fetch issues" },
       { status: 500 }
     );
   }
 }
 
-// POST - Create new issue
 export async function POST(request: NextRequest) {
   try {
-    const auth = await verifyAuth(request);
+    const auth = await authenticateRequest(request);
     if (!auth) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
@@ -63,13 +50,13 @@ export async function POST(request: NextRequest) {
 
     if (!row || !error) {
       return NextResponse.json(
-        { error: "Row and error are required" },
+        { error: "row and error are required" },
         { status: 400 }
       );
     }
 
-    const issue = new Issue({
-      row,
+    const issue = new IssueLog({
+      row: parseInt(row),
       itemId: itemId || "",
       error,
       resolved: false,
@@ -77,20 +64,21 @@ export async function POST(request: NextRequest) {
 
     await issue.save();
 
-    return NextResponse.json({
+    const transformedIssue = {
       id: issue._id.toString(),
       row: issue.row,
-      itemId: issue.itemId,
+      itemId: issue.itemId || "",
       error: issue.error,
       timestamp: issue.createdAt,
       resolved: issue.resolved,
-    });
+    };
+
+    return NextResponse.json(transformedIssue, { status: 201 });
   } catch (error: any) {
-    console.error("Error creating issue:", error);
+    console.error("Create issue error:", error);
     return NextResponse.json(
-      { error: "Internal server error" },
+      { error: "Failed to create issue" },
       { status: 500 }
     );
   }
 }
-
