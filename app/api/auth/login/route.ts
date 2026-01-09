@@ -1,10 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import connectDB from "@/lib/mongodb/connect";
 import User from "@/models/User";
-import { signToken } from "@/lib/auth/jwt";
+import { generateToken } from "@/lib/auth/jwt";
 
 export async function POST(request: NextRequest) {
   try {
+    await connectDB();
+
     const { email, password } = await request.json();
 
     if (!email || !password) {
@@ -14,35 +16,37 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    await connectDB();
-
+    // Find user
     const user = await User.findOne({ email: email.toLowerCase() });
     if (!user) {
       return NextResponse.json(
-        { error: "Invalid credentials" },
+        { error: "Invalid email or password" },
         { status: 401 }
       );
     }
 
+    // Verify password
     const isPasswordValid = await user.comparePassword(password);
     if (!isPasswordValid) {
       return NextResponse.json(
-        { error: "Invalid credentials" },
+        { error: "Invalid email or password" },
         { status: 401 }
       );
     }
 
-    const token = signToken({
+    // Generate token
+    const token = generateToken({
       userId: user._id.toString(),
       email: user.email,
     });
 
+    // Create response
     const response = NextResponse.json({
-      success: true,
       user: {
         id: user._id.toString(),
         email: user.email,
       },
+      token,
     });
 
     // Set HTTP-only cookie
@@ -57,7 +61,7 @@ export async function POST(request: NextRequest) {
   } catch (error: any) {
     console.error("Login error:", error);
     return NextResponse.json(
-      { error: "Internal server error" },
+      { error: "Login failed" },
       { status: 500 }
     );
   }

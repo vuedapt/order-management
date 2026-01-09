@@ -1,101 +1,130 @@
 import { NextRequest, NextResponse } from "next/server";
 import connectDB from "@/lib/mongodb/connect";
-import Stock from "@/models/Stock";
-import { verifyToken } from "@/lib/auth/jwt";
+import Inventory from "@/models/Inventory";
+import { authenticateRequest } from "@/lib/middleware/auth";
+import mongoose from "mongoose";
 
-async function verifyAuth(request: NextRequest) {
-  const token = request.cookies.get("token")?.value;
-  if (!token) {
-    return null;
-  }
-  try {
-    return verifyToken(token);
-  } catch {
-    return null;
-  }
-}
-
-// PUT - Update stock item
-export async function PUT(
+export async function GET(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> | { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const auth = await verifyAuth(request);
+    const auth = await authenticateRequest(request);
     if (!auth) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     await connectDB();
+    const { id } = await params;
 
-    // Handle both sync and async params (Next.js 15+ uses async)
-    const resolvedParams = params instanceof Promise ? await params : params;
-    const id = resolvedParams.id;
-
-    const body = await request.json();
-    const { itemId, itemName, stockCount } = body;
-
-    const stock = await Stock.findByIdAndUpdate(
-      id,
-      {
-        itemId,
-        itemName,
-        stockCount: parseInt(stockCount),
-      },
-      { new: true, runValidators: true }
-    );
-
-    if (!stock) {
-      return NextResponse.json({ error: "Stock item not found" }, { status: 404 });
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return NextResponse.json({ error: "Invalid stock ID" }, { status: 400 });
     }
 
-    return NextResponse.json({
+    const stock = await Inventory.findOne({ _id: id, archived: false }).lean();
+
+    if (!stock) {
+      return NextResponse.json({ error: "Stock not found" }, { status: 404 });
+    }
+
+    const transformedStock = {
       id: stock._id.toString(),
       itemId: stock.itemId,
       itemName: stock.itemName,
       stockCount: stock.stockCount,
       createdAt: stock.createdAt,
       updatedAt: stock.updatedAt,
-    });
+    };
+
+    return NextResponse.json(transformedStock);
   } catch (error: any) {
-    console.error("Error updating stock:", error);
+    console.error("Get stock error:", error);
     return NextResponse.json(
-      { error: error.message || "Internal server error" },
+      { error: "Failed to fetch stock" },
       { status: 500 }
     );
   }
 }
 
-// DELETE - Delete stock item
-export async function DELETE(
+export async function PUT(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> | { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const auth = await verifyAuth(request);
+    const auth = await authenticateRequest(request);
     if (!auth) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     await connectDB();
+    const { id } = await params;
 
-    // Handle both sync and async params (Next.js 15+ uses async)
-    const resolvedParams = params instanceof Promise ? await params : params;
-    const id = resolvedParams.id;
-
-    const stock = await Stock.findByIdAndDelete(id);
-
-    if (!stock) {
-      return NextResponse.json({ error: "Stock item not found" }, { status: 404 });
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return NextResponse.json({ error: "Invalid stock ID" }, { status: 400 });
     }
 
-    return NextResponse.json({ message: "Stock item deleted successfully" });
+    const body = await request.json();
+    const { itemId, itemName, stockCount } = body;
+
+    const stock = await Inventory.findOne({ _id: id, archived: false });
+    if (!stock) {
+      return NextResponse.json({ error: "Stock not found" }, { status: 404 });
+    }
+
+    // Update fields
+    if (itemId) stock.itemId = itemId;
+    if (itemName) stock.itemName = itemName;
+    if (stockCount !== undefined) stock.stockCount = parseInt(stockCount) || 0;
+
+    await stock.save();
+
+    const transformedStock = {
+      id: stock._id.toString(),
+      itemId: stock.itemId,
+      itemName: stock.itemName,
+      stockCount: stock.stockCount,
+      createdAt: stock.createdAt,
+      updatedAt: stock.updatedAt,
+    };
+
+    return NextResponse.json(transformedStock);
   } catch (error: any) {
-    console.error("Error deleting stock:", error);
+    console.error("Update stock error:", error);
     return NextResponse.json(
-      { error: error.message || "Internal server error" },
+      { error: "Failed to update stock" },
       { status: 500 }
     );
   }
 }
 
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const auth = await authenticateRequest(request);
+    if (!auth) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    await connectDB();
+    const { id } = await params;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return NextResponse.json({ error: "Invalid stock ID" }, { status: 400 });
+    }
+
+    const stock = await Inventory.findByIdAndDelete(id);
+    if (!stock) {
+      return NextResponse.json({ error: "Stock not found" }, { status: 404 });
+    }
+
+    return NextResponse.json({ message: "Stock deleted successfully" });
+  } catch (error: any) {
+    console.error("Delete stock error:", error);
+    return NextResponse.json(
+      { error: "Failed to delete stock" },
+      { status: 500 }
+    );
+  }
+}

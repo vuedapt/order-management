@@ -1,160 +1,100 @@
 import { NextRequest, NextResponse } from "next/server";
 import connectDB from "@/lib/mongodb/connect";
 import Order from "@/models/Order";
-import Stock from "@/models/Stock";
-import { verifyToken } from "@/lib/auth/jwt";
-import { formatDateIST, formatTimeIST } from "@/lib/utils/dateTime";
-import { generateNextOrderId } from "@/lib/utils/orderIdGenerator";
+import { authenticateRequest } from "@/lib/middleware/auth";
+import { getDateRangeFilter } from "@/lib/utils/dateTime";
 
-// Middleware to verify authentication
-async function verifyAuth(request: NextRequest) {
-  const token = request.cookies.get("token")?.value;
-  if (!token) {
-    return null;
-  }
-  try {
-    return verifyToken(token);
-  } catch {
-    return null;
-  }
-}
-
-// GET - Fetch orders with filters and pagination
 export async function GET(request: NextRequest) {
   try {
-    const auth = await verifyAuth(request);
+    const auth = await authenticateRequest(request);
     if (!auth) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     await connectDB();
 
-    const searchParams = request.nextUrl.searchParams;
+    const { searchParams } = new URL(request.url);
     const page = parseInt(searchParams.get("page") || "1");
-    const pageSize = parseInt(searchParams.get("pageSize") || "12");
+    const pageSize = parseInt(searchParams.get("pageSize") || "10");
     const itemId = searchParams.get("itemId") || "";
     const itemName = searchParams.get("itemName") || "";
     const clientName = searchParams.get("clientName") || "";
     const timeRange = searchParams.get("timeRange") || "all";
+    const status = searchParams.get("status") || "";
 
-    // Build query
-    const query: any = {};
+    // Build query - exclude archived data
+    const query: any = { archived: false };
+
+    // Status filter
+    if (status) {
+      query.status = status;
+    }
 
     // Time range filter
     if (timeRange !== "all") {
-      const now = new Date();
-      let startDate: Date;
-
-      switch (timeRange) {
-        case "today":
-          startDate = new Date(now);
-          startDate.setHours(0, 0, 0, 0);
-          break;
-        case "7d":
-          startDate = new Date(now);
-          startDate.setDate(startDate.getDate() - 7);
-          break;
-        case "1m":
-          startDate = new Date(now);
-          startDate.setMonth(startDate.getMonth() - 1);
-          break;
-        case "1y":
-          startDate = new Date(now);
-          startDate.setFullYear(startDate.getFullYear() - 1);
-          break;
-        default:
-          startDate = new Date(0);
-      }
-      query.createdAt = { $gte: startDate };
+      const { start, end } = getDateRangeFilter(timeRange);
+      query.createdAt = { $gte: start, $lte: end };
     }
 
-    // Text filters (client-side filtering for better performance)
-    const allOrders = await Order.find(query)
+    // Client name filter
+    if (clientName) {
+      query.clientName = { $regex: clientName, $options: "i" };
+    }
+
+    // Item filters (check in items array)
+    if (itemId || itemName) {
+      query.$or = [];
+      if (itemId) {
+        query.$or.push({ "items.itemId": { $regex: itemId, $options: "i" } });
+      }
+      if (itemName) {
+        query.$or.push({ "items.itemName": { $regex: itemName, $options: "i" } });
+      }
+    }
+
+    // Get total count
+    const total = await Order.countDocuments(query);
+
+    // Get paginated results
+    const skip = (page - 1) * pageSize;
+    const orders = await Order.find(query)
       .sort({ createdAt: -1 })
-      .limit(1000)
+      .skip(skip)
+      .limit(pageSize)
       .lean();
 
-    let filteredOrders = allOrders;
+    // Transform to match frontend format
+    const transformedOrders = orders.map((order: any) => ({
+      id: order._id.toString(),
+      orderId: order.orderId,
+      clientName: order.clientName,
+      items: order.items,
+      date: order.date,
+      time: order.time,
+      status: order.status,
+      createdAt: order.createdAt,
+      updatedAt: order.updatedAt,
+    }));
 
-    if (itemId.trim()) {
-      const searchTerm = itemId.trim().toLowerCase();
-      filteredOrders = filteredOrders.filter((order) =>
-        order.itemId.toLowerCase().includes(searchTerm)
-      );
-    }
-
-    if (itemName.trim()) {
-      const searchTerm = itemName.trim().toLowerCase();
-      filteredOrders = filteredOrders.filter((order) =>
-        order.itemName.toLowerCase().includes(searchTerm)
-      );
-    }
-
-    if (clientName.trim()) {
-      const searchTerm = clientName.trim().toLowerCase();
-      filteredOrders = filteredOrders.filter((order) =>
-        order.clientName.toLowerCase().includes(searchTerm)
-      );
-    }
-
-    const total = filteredOrders.length;
-    const startIndex = (page - 1) * pageSize;
-    const endIndex = startIndex + pageSize;
-    const paginatedOrders = filteredOrders.slice(startIndex, endIndex);
-
-    console.log("[API GET] Mapping orders for response", {
-      totalOrders: paginatedOrders.length,
-      sampleOrder: paginatedOrders[0] ? {
-        _id: paginatedOrders[0]._id?.toString(),
-        orderId: paginatedOrders[0].orderId,
-        hasOrderId: !!paginatedOrders[0].orderId,
-        orderKeys: Object.keys(paginatedOrders[0]),
-      } : null,
-    });
+    const totalPages = Math.ceil(total / pageSize);
 
     return NextResponse.json({
-      orders: paginatedOrders.map((order: any) => {
-        const mappedOrder = {
-          id: order._id.toString(),
-          orderId: order.orderId || `TEMP-${order._id.toString().slice(-6).toUpperCase()}`,
-          itemId: order.itemId,
-          itemName: order.itemName,
-          clientName: order.clientName,
-          stockCount: order.stockCount,
-          date: order.date || formatDateIST(order.createdAt),
-          time: order.time || formatTimeIST(order.createdAt),
-          createdAt: order.createdAt,
-          updatedAt: order.updatedAt,
-        };
-        
-        if (!order.orderId) {
-          console.warn("[API GET] Order missing orderId", {
-            id: order._id.toString(),
-            orderId: order.orderId,
-            fullOrder: order,
-          });
-        }
-        
-        return mappedOrder;
-      }),
+      orders: transformedOrders,
       total,
-      page,
-      pageSize,
-      totalPages: Math.ceil(total / pageSize),
+      totalPages,
     });
   } catch (error: any) {
-    console.error("Error fetching orders:", error);
+    console.error("Get orders error:", error);
     return NextResponse.json(
-      { error: "Internal server error" },
+      { error: "Failed to fetch orders" },
       { status: 500 }
     );
   }
 }
 
-// POST - Create new order
 export async function POST(request: NextRequest) {
   try {
-    const auth = await verifyAuth(request);
+    const auth = await authenticateRequest(request);
     if (!auth) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
@@ -162,161 +102,72 @@ export async function POST(request: NextRequest) {
     await connectDB();
 
     const body = await request.json();
-    const { itemId, itemName, clientName, stockCount } = body;
+    const { clientName, items } = body;
 
-    if (!itemId || !itemName || !clientName || stockCount === undefined) {
+    if (!clientName || !items || !Array.isArray(items) || items.length === 0) {
       return NextResponse.json(
-        { error: "All fields are required" },
+        { error: "Client name and at least one item are required" },
         { status: 400 }
       );
     }
 
-    // Auto-generate date and time from current IST
-    const currentDate = formatDateIST(new Date());
-    const currentTime = formatTimeIST(new Date());
+    // Generate order ID
+    const { generateOrderId } = await import("@/lib/utils/orderIdGenerator");
+    const { getCurrentDate, getCurrentTime } = await import("@/lib/utils/dateTime");
 
-    console.log("[API POST] Step 1: Starting order creation", { itemId, itemName, clientName, stockCount });
-
-    // Get the last order to generate the next order ID
-    // Exclude TEMP orderIds and only get valid format (AAA001-ZZZ999)
-    console.log("[API POST] Step 2: Querying for last order with valid orderId");
-    const lastOrder = await Order.findOne({ 
-      orderId: { 
-        $exists: true, 
-        $ne: null,
-        $regex: /^[A-Z]{3}\d{3}$/, // Only valid format AAA001-ZZZ999
-        $not: /^TEMP-/, // Exclude TEMP orderIds
-      } 
-    })
-      .sort({ orderId: -1 })
-      .lean();
+    // Generate order ID (handles sequential generation internally)
+    let orderId = await generateOrderId();
     
-    console.log("[API POST] Step 3: Last order query result", { 
-      found: !!lastOrder,
-      lastOrderId: lastOrder?.orderId,
-      lastOrderIdType: typeof lastOrder?.orderId,
-      lastOrderFull: lastOrder 
-    });
-
-    const lastOrderId = lastOrder?.orderId || null;
-    console.log("[API POST] Step 4: Generating next orderId", { lastOrderId });
-    
-    const nextOrderId = generateNextOrderId(lastOrderId);
-    console.log("[API POST] Step 5: Generated orderId", { nextOrderId });
-
-    console.log("[API POST] Step 6: Creating Order instance", {
-      orderId: nextOrderId,
-      itemId,
-      itemName,
-      clientName,
-      stockCount: parseInt(stockCount),
-      date: currentDate,
-      time: currentTime,
-    });
-
-    const order = new Order({
-      orderId: nextOrderId,
-      itemId,
-      itemName,
-      clientName,
-      stockCount: parseInt(stockCount),
-      date: currentDate,
-      time: currentTime,
-    });
-
-    console.log("[API POST] Step 7: Order instance created", {
-      _id: order._id?.toString(),
-      orderId: order.orderId,
-      hasOrderId: !!order.orderId,
-      orderIdType: typeof order.orderId,
-    });
-
-    try {
-      console.log("[API POST] Step 8: Decreasing stock");
-      // Decrease stock for the item
-      const stock = await Stock.findOne({ itemId });
-      if (!stock) {
-        return NextResponse.json(
-          { error: `Item ${itemId} not found in stock` },
-          { status: 404 }
-        );
-      }
-      if (stock.stockCount < parseInt(stockCount)) {
-        return NextResponse.json(
-          { error: `Insufficient stock. Available: ${stock.stockCount}, Requested: ${parseInt(stockCount)}` },
-          { status: 400 }
-        );
-      }
-      stock.stockCount -= parseInt(stockCount);
-      await stock.save();
-      console.log("[API POST] Step 8.1: Stock decreased successfully", {
-        itemId,
-        newStockCount: stock.stockCount,
-      });
-
-      console.log("[API POST] Step 9: Saving order to database");
-      await order.save();
-      console.log("[API POST] Step 10: Order saved successfully", { 
-        id: order._id.toString(), 
-        orderId: order.orderId,
-        orderIdAfterSave: order.orderId,
-        orderKeys: Object.keys(order.toObject ? order.toObject() : {}),
-      });
-    } catch (saveError: any) {
-      console.error("[API POST] Step 9 ERROR: Error saving order", {
-        error: saveError.message,
-        errorStack: saveError.stack,
-        errorName: saveError.name,
-        errorCode: saveError.code,
-        errorKeyPattern: saveError.keyPattern,
-        errorKeyValue: saveError.keyValue,
-      });
-      throw saveError;
+    // Check if order ID already exists (retry if needed)
+    let existingOrder = await Order.findOne({ orderId });
+    let attempts = 0;
+    while (existingOrder && attempts < 10) {
+      orderId = await generateOrderId();
+      existingOrder = await Order.findOne({ orderId });
+      attempts++;
     }
 
-    // Verify the order was saved with orderId
-    console.log("[API POST] Step 11: Verifying saved order from DB");
-    const savedOrder = await Order.findById(order._id).lean();
-    console.log("[API POST] Step 12: Verified saved order from DB", { 
-      id: savedOrder?._id?.toString(), 
-      orderId: savedOrder?.orderId,
-      hasOrderId: !!savedOrder?.orderId,
-      savedOrderKeys: savedOrder ? Object.keys(savedOrder) : [],
-      fullSavedOrder: savedOrder,
+    // Validate items
+    const orderItems = items.map((item: any) => ({
+      itemId: item.itemId,
+      itemName: item.itemName,
+      stockCount: parseInt(item.stockCount) || 0,
+      billedStockCount: 0,
+    }));
+
+    // Determine status based on items
+    const totalStock = orderItems.reduce((sum: number, item: any) => sum + item.stockCount, 0);
+    const status = totalStock > 0 ? "uncompleted" : "uncompleted";
+
+    const order = new Order({
+      orderId,
+      clientName,
+      items: orderItems,
+      date: getCurrentDate(),
+      time: getCurrentTime(),
+      status,
     });
 
-    const finalOrderId = savedOrder?.orderId || order.orderId || nextOrderId;
-    console.log("[API POST] Step 13: Preparing response", {
-      finalOrderId,
-      sources: {
-        fromDB: savedOrder?.orderId,
-        fromInstance: order.orderId,
-        generated: nextOrderId,
-      },
-    });
+    await order.save();
 
-    const response = {
+    const transformedOrder = {
       id: order._id.toString(),
-      orderId: finalOrderId,
-      itemId: order.itemId,
-      itemName: order.itemName,
+      orderId: order.orderId,
       clientName: order.clientName,
-      stockCount: order.stockCount,
+      items: order.items,
       date: order.date,
       time: order.time,
+      status: order.status,
       createdAt: order.createdAt,
       updatedAt: order.updatedAt,
     };
 
-    console.log("[API POST] Step 14: Final response", response);
-
-    return NextResponse.json(response);
+    return NextResponse.json(transformedOrder, { status: 201 });
   } catch (error: any) {
-    console.error("Error creating order:", error);
+    console.error("Create order error:", error);
     return NextResponse.json(
-      { error: "Internal server error" },
+      { error: "Failed to create order" },
       { status: 500 }
     );
   }
 }
-

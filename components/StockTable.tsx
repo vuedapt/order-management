@@ -1,6 +1,6 @@
 "use client";
 
-import { StockItem } from "@/lib/services/stockService";
+import { StockItem } from "@/types/stock";
 
 interface StockTableProps {
   stocks: StockItem[];

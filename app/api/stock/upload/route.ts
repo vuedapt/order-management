@@ -1,25 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import connectDB from "@/lib/mongodb/connect";
-import Stock from "@/models/Stock";
-import { verifyToken } from "@/lib/auth/jwt";
+import Inventory from "@/models/Inventory";
+import { authenticateRequest } from "@/lib/middleware/auth";
 import * as XLSX from "xlsx";
 
-async function verifyAuth(request: NextRequest) {
-  const token = request.cookies.get("token")?.value;
-  if (!token) {
-    return null;
-  }
-  try {
-    return verifyToken(token);
-  } catch {
-    return null;
-  }
-}
-
-// POST - Bulk upload stocks from Excel
 export async function POST(request: NextRequest) {
   try {
-    const auth = await verifyAuth(request);
+    const auth = await authenticateRequest(request);
     if (!auth) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
@@ -36,77 +23,182 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Read file buffer
     const arrayBuffer = await file.arrayBuffer();
-    const workbook = XLSX.read(arrayBuffer, { type: "array" });
+    const buffer = Buffer.from(arrayBuffer);
+
+    // Parse Excel file
+    const workbook = XLSX.read(buffer, { type: "buffer" });
     const sheetName = workbook.SheetNames[0];
     const worksheet = workbook.Sheets[sheetName];
-    const data = XLSX.utils.sheet_to_json(worksheet);
 
-    const results = {
-      success: [] as any[],
-      errors: [] as any[],
-    };
+    // Convert to JSON - use first row as header
+    const data = XLSX.utils.sheet_to_json(worksheet, {
+      defval: "",
+      raw: false,
+      header: 1, // Use array format to better handle template structure
+    }) as any[][];
 
-    for (let i = 0; i < data.length; i++) {
-      const row = data[i] as any;
-      const itemId = String(row["Item ID"] || row["itemId"] || row["ItemID"] || "").trim();
-      const itemName = String(row["Item Name"] || row["itemName"] || row["ItemName"] || "").trim();
-      const stockCount = parseInt(row["Stock Count"] || row["stockCount"] || row["StockCount"] || 0);
+    // Find the header row (look for "Item ID" or similar)
+    let headerRowIndex = -1;
+    for (let i = 0; i < Math.min(data.length, 10); i++) {
+      const row = data[i];
+      if (Array.isArray(row)) {
+        const rowStr = row.map(cell => String(cell || "").toLowerCase()).join(" ");
+        if (rowStr.includes("item") && (rowStr.includes("id") || rowStr.includes("name"))) {
+          headerRowIndex = i;
+          break;
+        }
+      }
+    }
 
+    if (headerRowIndex === -1) {
+      return NextResponse.json(
+        { error: "Could not find header row. Expected columns: Item ID, Item Name, Stock Count" },
+        { status: 400 }
+      );
+    }
+
+    // Get header row and normalize column indices
+    const headerRow = data[headerRowIndex].map((cell: any) => String(cell || "").trim().toLowerCase());
+    const itemIdIndex = headerRow.findIndex((h: string) => 
+      h.includes("item") && h.includes("id")
+    );
+    const itemNameIndex = headerRow.findIndex((h: string) => 
+      h.includes("item") && h.includes("name")
+    );
+    const stockCountIndex = headerRow.findIndex((h: string) => 
+      h.includes("stock") && h.includes("count")
+    );
+
+    if (itemIdIndex === -1 || itemNameIndex === -1 || stockCountIndex === -1) {
+      return NextResponse.json(
+        { error: "Missing required columns. Expected: Item ID, Item Name, Stock Count" },
+        { status: 400 }
+      );
+    }
+
+    // Validate and process rows
+    const errors: Array<{ row: number; error: string }> = [];
+    const success: Array<any> = [];
+    let successCount = 0;
+    let errorCount = 0;
+
+    // Process data rows (starting after header row)
+    for (let i = headerRowIndex + 1; i < data.length; i++) {
+      const row = data[i];
+      if (!Array.isArray(row) || row.length === 0) {
+        continue;
+      }
+
+      const rowNumber = i + 1; // Excel row number (1-indexed)
+
+      // Extract values using column indices
+      const itemId = String(row[itemIdIndex] || "").trim();
+      const itemName = String(row[itemNameIndex] || "").trim();
+      const stockCount = String(row[stockCountIndex] || "").trim();
+
+      // Skip empty rows
+      if (!itemId && !itemName && !stockCount) {
+        continue;
+      }
+
+      // Skip header-like rows
+      if (
+        itemId.toLowerCase().includes("item") && itemId.toLowerCase().includes("id") ||
+        itemName.toLowerCase().includes("item") && itemName.toLowerCase().includes("name")
+      ) {
+        continue;
+      }
+
+      // Validate required fields
       if (!itemId || !itemName) {
-        results.errors.push({
-          row: i + 2, // +2 because Excel rows start at 1 and we have a header
+        errors.push({
+          row: rowNumber,
           error: "Item ID and Item Name are required",
         });
+        errorCount++;
+        continue;
+      }
+
+      // Validate stock count
+      const stockCountNum = parseInt(String(stockCount)) || 0;
+      if (isNaN(stockCountNum) || stockCountNum < 0) {
+        errors.push({
+          row: rowNumber,
+          error: "Stock Count must be a valid non-negative number",
+        });
+        errorCount++;
         continue;
       }
 
       try {
-        // Check if stock item already exists
-        const existingStock = await Stock.findOne({ itemId });
-        if (existingStock) {
-          // Update existing stock
-          existingStock.itemName = itemName;
-          existingStock.stockCount = stockCount;
-          await existingStock.save();
-          results.success.push({
-            row: i + 2,
-            itemId,
-            action: "updated",
-          });
+        const trimmedItemId = String(itemId).trim();
+        
+        // First check if item exists (any status)
+        const anyItem = await Inventory.findOne({ itemId: trimmedItemId });
+        
+        if (anyItem) {
+          if (!anyItem.archived) {
+            // Item exists and is not archived - ADD to stock count
+            anyItem.itemName = String(itemName).trim();
+            anyItem.stockCount = (anyItem.stockCount || 0) + stockCountNum;
+            await anyItem.save();
+            success.push({
+              row: rowNumber,
+              itemId: trimmedItemId,
+              action: "stock_increased",
+              previousStock: (anyItem.stockCount || 0) - stockCountNum,
+              newStock: anyItem.stockCount,
+            });
+          } else {
+            // Item exists but is archived - restore and set stock count
+            anyItem.archived = false;
+            anyItem.itemName = String(itemName).trim();
+            anyItem.stockCount = stockCountNum;
+            await anyItem.save();
+            success.push({
+              row: rowNumber,
+              itemId: trimmedItemId,
+              action: "restored",
+            });
+          }
         } else {
-          // Create new stock
-          const stock = new Stock({
-            itemId,
-            itemName,
-            stockCount,
+          // Item doesn't exist - create new item
+          const inventory = new Inventory({
+            itemId: trimmedItemId,
+            itemName: String(itemName).trim(),
+            stockCount: stockCountNum,
           });
-          await stock.save();
-          results.success.push({
-            row: i + 2,
-            itemId,
+          await inventory.save();
+          success.push({
+            row: rowNumber,
+            itemId: trimmedItemId,
             action: "created",
           });
         }
-      } catch (error: any) {
-        results.errors.push({
-          row: i + 2,
-          itemId,
-          error: error.message || "Failed to save stock item",
+        successCount++;
+      } catch (dbError: any) {
+        errors.push({
+          row: rowNumber,
+          error: dbError.message || "Database error",
         });
+        errorCount++;
       }
     }
 
     return NextResponse.json({
-      message: `Processed ${data.length} rows`,
-      success: results.success.length,
-      errors: results.errors.length,
-      details: results,
+      success: successCount,
+      errors: errorCount,
+      details: {
+        success,
+        errors,
+      },
     });
   } catch (error: any) {
-    console.error("Error uploading stocks:", error);
+    console.error("Error uploading stock file:", error);
     return NextResponse.json(
-      { error: error.message || "Internal server error" },
+      { error: error.message || "Failed to upload file" },
       { status: 500 }
     );
   }

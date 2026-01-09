@@ -2,8 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { OrderFormData, Order, OrderItem, MultiOrderFormData } from "@/types/order";
-import { orderService } from "@/lib/services/orderService";
-import { stockService, StockItem } from "@/lib/services/stockService";
+import { StockItem } from "@/types/stock";
 import Autocomplete from "./Autocomplete";
 
 interface OrderFormProps {
@@ -29,20 +28,30 @@ export default function OrderForm({ order, onSubmit, onCancel }: OrderFormProps)
   const [stockItems, setStockItems] = useState<StockItem[]>([]);
 
   useEffect(() => {
-    const fetchData = async () => {
+    const loadData = async () => {
       try {
-        const [clientNamesData, stocksData] = await Promise.all([
-          orderService.getClientNames(),
-          stockService.getStocks({ page: 1, pageSize: 1000 }),
-        ]);
-        setClientNames(clientNamesData);
-        setStockItems(stocksData.stocks);
+        // Load client names from orders
+        const ordersResponse = await fetch("/api/orders?page=1&pageSize=1000");
+        if (ordersResponse.ok) {
+          const ordersData = await ordersResponse.json();
+          const clientNamesSet = new Set<string>();
+          ordersData.orders?.forEach((order: any) => {
+            if (order.clientName) clientNamesSet.add(order.clientName);
+          });
+          setClientNames(Array.from(clientNamesSet).sort());
+        }
+
+        // Load stock items
+        const stockResponse = await fetch("/api/stock?page=1&pageSize=1000");
+        if (stockResponse.ok) {
+          const stockData = await stockResponse.json();
+          setStockItems(stockData.stocks || []);
+        }
       } catch (error) {
-        console.error("Error fetching data:", error);
+        console.error("Error loading form data:", error);
       }
     };
-
-    fetchData();
+    loadData();
   }, []);
 
   useEffect(() => {

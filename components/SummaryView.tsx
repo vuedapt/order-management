@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { OrderFilters } from "@/types/filter";
-import { orderService } from "@/lib/services/orderService";
 import { exportToPDF, exportToExcel, exportToCSV } from "@/lib/exports";
 import type { SummaryByItem, SummaryByClientItem } from "@/lib/exports";
 import OrderFiltersComponent from "./OrderFilters";
@@ -49,12 +48,63 @@ export default function SummaryView({ onClose }: SummaryViewProps) {
   }, [onClose]);
 
   const loadSummary = useCallback(async () => {
+    setLoading(true);
     try {
-      setLoading(true);
-      const result = await orderService.getSummary(filters);
-      setSummaryByItem(result.summaryByItem);
-      setSummaryByClientItem(result.summaryByClientItem);
-      setTotalOrders(result.totalOrders);
+      const params = new URLSearchParams({
+        page: "1",
+        pageSize: "1000",
+        ...(filters.itemId && { itemId: filters.itemId }),
+        ...(filters.itemName && { itemName: filters.itemName }),
+        ...(filters.clientName && { clientName: filters.clientName }),
+        ...(filters.timeRange && { timeRange: filters.timeRange }),
+      });
+
+      const response = await fetch(`/api/orders?${params.toString()}`);
+      if (!response.ok) {
+        throw new Error("Failed to load orders");
+      }
+      const data = await response.json();
+      const filtered = data.orders || [];
+      
+      // Calculate summary by item
+      const itemSummaryMap = new Map<string, { itemId: string; itemName: string; totalStock: number }>();
+      filtered.forEach((order: any) => {
+        order.items?.forEach((item: any) => {
+          const key = item.itemId;
+          const existing = itemSummaryMap.get(key);
+          if (existing) {
+            existing.totalStock += item.stockCount;
+          } else {
+            itemSummaryMap.set(key, {
+              itemId: item.itemId,
+              itemName: item.itemName,
+              totalStock: item.stockCount,
+            });
+          }
+        });
+      });
+      setSummaryByItem(Array.from(itemSummaryMap.values()));
+
+      // Calculate summary by client and item
+      const clientItemSummaryMap = new Map<string, { client: string; itemId: string; itemName: string; totalStock: number }>();
+      filtered.forEach((order: any) => {
+        order.items?.forEach((item: any) => {
+          const key = `${order.clientName}-${item.itemId}`;
+          const existing = clientItemSummaryMap.get(key);
+          if (existing) {
+            existing.totalStock += item.stockCount;
+          } else {
+            clientItemSummaryMap.set(key, {
+              client: order.clientName,
+              itemId: item.itemId,
+              itemName: item.itemName,
+              totalStock: item.stockCount,
+            });
+          }
+        });
+      });
+      setSummaryByClientItem(Array.from(clientItemSummaryMap.values()));
+      setTotalOrders(filtered.length);
     } catch (error) {
       console.error("Error loading summary:", error);
     } finally {

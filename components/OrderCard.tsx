@@ -1,6 +1,7 @@
 "use client";
 
 import { Order } from "@/types/order";
+import { FiEdit2, FiTrash2 } from "react-icons/fi";
 
 interface OrderCardProps {
   order: Order;
@@ -14,10 +15,10 @@ export default function OrderCard({ order, onEdit, onDelete }: OrderCardProps) {
       <div className="space-y-3">
         <div>
           <h3 className="text-lg font-semibold text-black dark:text-zinc-50">
-            {order.itemName}
+            {order.items.length > 0 ? order.items[0].itemName : "No items"}
           </h3>
           <p className="text-sm text-zinc-500 dark:text-zinc-400">
-            ID: {order.itemId}
+            Items: {order.items.length}
           </p>
         </div>
 
@@ -29,24 +30,26 @@ export default function OrderCard({ order, onEdit, onDelete }: OrderCardProps) {
             </span>
           </div>
           <div className="flex justify-between">
-            <span className="text-zinc-600 dark:text-zinc-400">Stock:</span>
+            <span className="text-zinc-600 dark:text-zinc-400">Total Stock:</span>
             <span className="font-medium text-black dark:text-zinc-50">
-              {order.stockCount}
+              {order.items.reduce((sum, item) => sum + item.stockCount, 0)}
             </span>
           </div>
         </div>
 
-        <div className="flex gap-2 pt-4 border-t border-zinc-200 dark:border-zinc-800">
+        <div className="flex gap-2 pt-4 border-t border-zinc-100 dark:border-zinc-800">
           <button
             onClick={() => onEdit(order)}
-            className="flex-1 rounded-md bg-teal-500 px-3 py-2 text-sm font-medium text-white hover:bg-teal-600 focus:outline-none focus:ring-2 focus:ring-teal-500 transition-all duration-200"
+            className="flex-1 flex items-center justify-center gap-2 rounded-md bg-teal-50 dark:bg-teal-900/20 px-3 py-2 text-xs font-medium text-teal-700 dark:text-teal-300 hover:bg-teal-100 dark:hover:bg-teal-900/40 transition-all duration-200"
           >
+            <FiEdit2 size={14} />
             Edit
           </button>
           <button
             onClick={() => onDelete(order.id)}
-            className="flex-1 rounded-md bg-red-400 px-3 py-2 text-sm font-medium text-white hover:bg-red-500 focus:outline-none focus:ring-2 focus:ring-red-500 transition-all duration-200"
+            className="flex-1 flex items-center justify-center gap-2 rounded-md bg-red-50 dark:bg-red-900/20 px-3 py-2 text-xs font-medium text-red-700 dark:text-red-300 hover:bg-red-100 dark:hover:bg-red-900/40 transition-all duration-200"
           >
+            <FiTrash2 size={14} />
             Delete
           </button>
         </div>

@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from "react";
 import { OrderFilters, TimeRange } from "@/types/filter";
-import { orderService } from "@/lib/services/orderService";
 import Autocomplete from "./Autocomplete";
 
 interface OrderFiltersProps {
@@ -19,22 +18,32 @@ export default function OrderFiltersComponent({
   const [itemNames, setItemNames] = useState<string[]>([]);
 
   useEffect(() => {
-    const fetchFilterOptions = async () => {
+    const loadFilterOptions = async () => {
       try {
-        const [clientNamesData, itemIdsData, itemNamesData] = await Promise.all([
-          orderService.getClientNames(),
-          orderService.getItemIds(),
-          orderService.getItemNames(),
-        ]);
-        setClientNames(clientNamesData);
-        setItemIds(itemIdsData);
-        setItemNames(itemNamesData);
+        const response = await fetch("/api/orders?page=1&pageSize=1000");
+        if (response.ok) {
+          const data = await response.json();
+          const clientNamesSet = new Set<string>();
+          const itemIdsSet = new Set<string>();
+          const itemNamesSet = new Set<string>();
+
+          data.orders?.forEach((order: any) => {
+            if (order.clientName) clientNamesSet.add(order.clientName);
+            order.items?.forEach((item: any) => {
+              if (item.itemId) itemIdsSet.add(item.itemId);
+              if (item.itemName) itemNamesSet.add(item.itemName);
+            });
+          });
+
+          setClientNames(Array.from(clientNamesSet).sort());
+          setItemIds(Array.from(itemIdsSet).sort());
+          setItemNames(Array.from(itemNamesSet).sort());
+        }
       } catch (error) {
-        console.error("Error fetching filter options:", error);
+        console.error("Error loading filter options:", error);
       }
     };
-
-    fetchFilterOptions();
+    loadFilterOptions();
   }, []);
   const handleFilterChange = (key: keyof OrderFilters, value: string | TimeRange) => {
     onFiltersChange({
