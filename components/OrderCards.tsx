@@ -9,7 +9,7 @@ interface OrderCardsProps {
   orders: Order[];
   onEdit?: (order: Order) => void;
   onDelete?: (orderId: string) => void;
-  onBill?: (order: Order, itemId: string) => void;
+  onBill?: (order: Order) => void;
   showEditDelete?: boolean;
   currentPage: number;
   pageSize: number;
@@ -260,25 +260,28 @@ export default function OrderCards({
                                   />
                                 </div>
                               </div>
-                              {onBill && itemYetToFulfill > 0 && (
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    onBill(order, item.itemId);
-                                  }}
-                                  className="flex items-center gap-2 px-3 py-2 rounded-md bg-teal-500 text-white text-sm font-medium hover:bg-teal-600 transition-colors whitespace-nowrap"
-                                  title="Bill this item"
-                                >
-                                  <FaCheck className="w-4 h-4" />
-                                  Bill
-                                </button>
-                              )}
                             </div>
                           </div>
                         );
                       })}
                     </div>
                   </div>
+                  {/* Bill button for the entire order */}
+                  {onBill && yetToFulfill > 0 && (
+                    <div className="mt-4 pt-4 border-t border-zinc-200 dark:border-zinc-700">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onBill(order);
+                        }}
+                        className="w-full flex items-center justify-center gap-2 px-4 py-2 rounded-md bg-teal-500 text-white text-sm font-medium hover:bg-teal-600 transition-colors"
+                        title="Bill this order"
+                      >
+                        <FaCheck className="w-4 h-4" />
+                        Bill Order
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
             )}

@@ -1,5 +1,6 @@
 export interface BillingEntry {
   id: string;
+  billId: string;
   orderId: string;
   orderOrderId: string;
   itemId: string;
@@ -14,6 +15,18 @@ export interface BillingEntry {
   updatedAt: Date;
 }
 
+export interface BillingBill {
+  billId: string;
+  orderOrderId: string;
+  clientName: string;
+  date: string;
+  time: string;
+  totalAmount: number;
+  items: BillingEntry[];
+  createdAt: Date;
+  updatedAt: Date;
+}
+
 export interface BillingFilters {
   itemId: string;
   itemName: string;
@@ -22,6 +35,15 @@ export interface BillingFilters {
   timeRange: string;
 }
 
+export interface PaginatedBillingBills {
+  bills: BillingBill[];
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+}
+
+// Legacy interface for backward compatibility
 export interface PaginatedBillingEntries {
   billingEntries: BillingEntry[];
   total: number;

@@ -22,6 +22,8 @@ export default function OrderForm({ order, onSubmit, onCancel }: OrderFormProps)
     clientName: "",
     items: [{ itemId: "", itemName: "", stockCount: 0 }],
   });
+  // Store billedStockCount separately for existing items when editing
+  const [billedCounts, setBilledCounts] = useState<Record<string, number>>({});
   const [isMultiMode, setIsMultiMode] = useState(!order);
   const [loading, setLoading] = useState(false);
   const [clientNames, setClientNames] = useState<string[]>([]);
@@ -56,7 +58,32 @@ export default function OrderForm({ order, onSubmit, onCancel }: OrderFormProps)
 
   useEffect(() => {
     if (order) {
-      // Handle new Order structure with items array
+      // When editing, use multi-mode to allow adding/removing items
+      setIsMultiMode(true);
+      // Initialize with all existing items, preserving billedStockCount
+      const existingItems = order.items && order.items.length > 0 
+        ? order.items.map(item => ({
+            itemId: item.itemId,
+            itemName: item.itemName,
+            stockCount: item.stockCount,
+          }))
+        : [{ itemId: "", itemName: "", stockCount: 0 }];
+      
+      // Store billedStockCount separately
+      const billedCountsMap: Record<string, number> = {};
+      if (order.items) {
+        order.items.forEach(item => {
+          billedCountsMap[item.itemId] = item.billedStockCount || 0;
+        });
+      }
+      setBilledCounts(billedCountsMap);
+      
+      setMultiFormData({
+        clientName: order.clientName,
+        items: existingItems,
+      });
+      
+      // Also set formData for backward compatibility (though we'll use multi-mode)
       const firstItem = order.items && order.items.length > 0 ? order.items[0] : null;
       if (firstItem) {
         setFormData({
@@ -65,16 +92,7 @@ export default function OrderForm({ order, onSubmit, onCancel }: OrderFormProps)
           clientName: order.clientName,
           stockCount: firstItem.stockCount,
         });
-      } else {
-        // Fallback for legacy orders (shouldn't happen with new structure)
-        setFormData({
-          itemId: "",
-          itemName: "",
-          clientName: order.clientName,
-          stockCount: 0,
-        });
       }
-      setIsMultiMode(false);
     }
   }, [order]);
 
@@ -82,12 +100,37 @@ export default function OrderForm({ order, onSubmit, onCancel }: OrderFormProps)
     e.preventDefault();
     setLoading(true);
     try {
-      if (isMultiMode && !order) {
-        await onSubmit(multiFormData);
-        setMultiFormData({
-          clientName: "",
-          items: [{ itemId: "", itemName: "", stockCount: 0 }],
-        });
+      if (isMultiMode) {
+        // Convert multiFormData to OrderFormData format
+        // When editing, preserve billedStockCount for existing items
+        const orderFormData: OrderFormData = {
+          clientName: multiFormData.clientName,
+          items: multiFormData.items.map(item => {
+            // If editing, preserve billedStockCount from billedCounts map
+            if (order && billedCounts[item.itemId] !== undefined) {
+              return {
+                itemId: item.itemId,
+                itemName: item.itemName,
+                stockCount: item.stockCount,
+                billedStockCount: billedCounts[item.itemId],
+              };
+            }
+            // For new items or new orders, billedStockCount is always 0
+            return {
+              itemId: item.itemId,
+              itemName: item.itemName,
+              stockCount: item.stockCount,
+              billedStockCount: 0,
+            };
+          }),
+        };
+        await onSubmit(orderFormData);
+        if (!order) {
+          setMultiFormData({
+            clientName: "",
+            items: [{ itemId: "", itemName: "", stockCount: 0 }],
+          });
+        }
       } else {
         // Convert single form data to OrderFormData format
         const orderFormData: OrderFormData = {
@@ -138,7 +181,7 @@ export default function OrderForm({ order, onSubmit, onCancel }: OrderFormProps)
     setMultiFormData({ ...multiFormData, items: updatedItems });
   };
 
-  if (isMultiMode && !order) {
+  if (isMultiMode) {
     return (
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
@@ -251,6 +294,11 @@ export default function OrderForm({ order, onSubmit, onCancel }: OrderFormProps)
                   className="w-full rounded-md border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 px-3 py-2 text-black dark:text-zinc-50 focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500"
                   placeholder="Enter stock count"
                 />
+                {order && billedCounts[item.itemId] !== undefined && billedCounts[item.itemId] > 0 && (
+                  <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
+                    Already billed: {billedCounts[item.itemId]}
+                  </p>
+                )}
               </div>
             </div>
           ))}
@@ -263,7 +311,7 @@ export default function OrderForm({ order, onSubmit, onCancel }: OrderFormProps)
             disabled={loading}
             className="flex-1 cursor-pointer rounded-md bg-teal-500 px-4 py-2 text-sm font-medium text-white hover:bg-teal-600 focus:outline-none focus:ring-2 focus:ring-teal-500 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200"
           >
-            {loading ? "Saving..." : `Create ${multiFormData.items.length} Order${multiFormData.items.length > 1 ? "s" : ""}`}
+            {loading ? "Saving..." : order ? `Update Order (${multiFormData.items.length} item${multiFormData.items.length !== 1 ? "s" : ""})` : `Create ${multiFormData.items.length} Order${multiFormData.items.length > 1 ? "s" : ""}`}
           </button>
           <button
             type="button"

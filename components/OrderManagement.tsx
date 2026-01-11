@@ -233,11 +233,9 @@ export default function OrderManagement() {
   };
 
   const [billingOrder, setBillingOrder] = useState<Order | null>(null);
-  const [billingItemId, setBillingItemId] = useState<string>("");
 
-  const handleBill = (order: Order, itemId: string) => {
+  const handleBill = (order: Order) => {
     setBillingOrder(order);
-    setBillingItemId(itemId);
   };
 
   const handleBillingSubmit = async (data: BillingData) => {
@@ -249,11 +247,7 @@ export default function OrderManagement() {
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({
-          itemId: billingItemId,
-          billedStockCount: data.billedStockCount,
-          price: data.price,
-        }),
+        body: JSON.stringify(data),
       });
 
       if (!response.ok) {
@@ -267,7 +261,6 @@ export default function OrderManagement() {
         type: "success",
       });
       setBillingOrder(null);
-      setBillingItemId("");
       loadOrders();
     } catch (error: any) {
       setSnackbar({
@@ -280,7 +273,6 @@ export default function OrderManagement() {
 
   const handleBillingCancel = () => {
     setBillingOrder(null);
-    setBillingItemId("");
   };
 
   const handleEdit = (order: Order) => {
@@ -638,7 +630,6 @@ export default function OrderManagement() {
             </div>
             <BillingForm
               order={billingOrder}
-              itemId={billingItemId}
               onSubmit={handleBillingSubmit}
               onCancel={handleBillingCancel}
             />

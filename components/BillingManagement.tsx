@@ -1,18 +1,20 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { BillingEntry, BillingFilters } from "@/types/billing";
+import { BillingBill, BillingFilters } from "@/types/billing";
 import { PaginationParams } from "@/types/filter";
-import BillingTable from "./BillingTable";
+import BillingCards from "./BillingCards";
 import BillingFiltersComponent from "./BillingFilters";
 import Pagination from "./Pagination";
 import PageHeader from "./PageHeader";
 import Snackbar from "./Snackbar";
+import { exportBillingSummaryToPDF } from "@/lib/exports/billingSummaryPdf";
+import { MdFileDownload } from "react-icons/md";
 
 const PAGE_SIZE = 10;
 
 export default function BillingManagement() {
-  const [billingEntries, setBillingEntries] = useState<BillingEntry[]>([]);
+  const [bills, setBills] = useState<BillingBill[]>([]);
   const [loading, setLoading] = useState(true);
   const [snackbar, setSnackbar] = useState<{
     isOpen: boolean;
@@ -37,6 +39,7 @@ export default function BillingManagement() {
   });
   const [totalPages, setTotalPages] = useState(1);
   const [total, setTotal] = useState(0);
+  const [downloadingSummary, setDownloadingSummary] = useState(false);
 
   // Debounce filter changes (1000ms delay)
   useEffect(() => {
@@ -66,7 +69,7 @@ export default function BillingManagement() {
         throw new Error("Failed to load billing entries");
       }
       const data = await response.json();
-      setBillingEntries(data.billingEntries || []);
+      setBills(data.bills || []);
       setTotalPages(data.totalPages || 1);
       setTotal(data.total || 0);
     } catch (error) {
@@ -98,7 +101,55 @@ export default function BillingManagement() {
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
-  if (loading && billingEntries.length === 0) {
+  const handleDownloadSummary = async () => {
+    setDownloadingSummary(true);
+    try {
+      // Fetch all bills matching current filters (no pagination)
+      const params = new URLSearchParams({
+        page: "1",
+        pageSize: "10000", // Large number to get all bills
+        ...(debouncedFilters.itemId && { itemId: debouncedFilters.itemId }),
+        ...(debouncedFilters.itemName && { itemName: debouncedFilters.itemName }),
+        ...(debouncedFilters.clientName && { clientName: debouncedFilters.clientName }),
+        ...(debouncedFilters.orderOrderId && { orderOrderId: debouncedFilters.orderOrderId }),
+        ...(debouncedFilters.timeRange && { timeRange: debouncedFilters.timeRange }),
+      });
+
+      const response = await fetch(`/api/billing?${params.toString()}`);
+      if (!response.ok) {
+        throw new Error("Failed to load billing summary");
+      }
+      const data = await response.json();
+      const allBills = data.bills || [];
+      
+      // Calculate total amount
+      const totalAmount = allBills.reduce((sum: number, bill: BillingBill) => sum + bill.totalAmount, 0);
+      
+      // Export to PDF
+      await exportBillingSummaryToPDF({
+        bills: allBills,
+        totalAmount,
+        filters: debouncedFilters,
+      });
+      
+      setSnackbar({
+        isOpen: true,
+        message: "Billing summary downloaded successfully",
+        type: "success",
+      });
+    } catch (error) {
+      console.error("Error downloading summary:", error);
+      setSnackbar({
+        isOpen: true,
+        message: "Failed to download billing summary",
+        type: "error",
+      });
+    } finally {
+      setDownloadingSummary(false);
+    }
+  };
+
+  if (loading && bills.length === 0) {
     return (
       <div className="flex items-center justify-center p-8">
         <p className="text-zinc-600 dark:text-zinc-400">Loading billing entries...</p>
@@ -108,7 +159,18 @@ export default function BillingManagement() {
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Billing Management" />
+      <div className="flex items-center justify-between">
+        <PageHeader title="Billing Management" />
+        <button
+          onClick={handleDownloadSummary}
+          disabled={downloadingSummary || loading}
+          className="cursor-pointer rounded-md bg-teal-500 px-4 py-2 text-sm font-medium text-white hover:bg-teal-600 focus:outline-none focus:ring-2 focus:ring-teal-500 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 flex items-center gap-2"
+          title="Download Billing Summary"
+        >
+          <MdFileDownload className="text-lg" />
+          {downloadingSummary ? "Downloading..." : "Download Summary"}
+        </button>
+      </div>
 
       <BillingFiltersComponent
         filters={filters}
@@ -121,8 +183,8 @@ export default function BillingManagement() {
         </div>
       ) : (
         <>
-          <BillingTable
-            billingEntries={billingEntries}
+          <BillingCards
+            bills={bills}
             currentPage={pagination.page}
             pageSize={pagination.pageSize}
             total={total}

@@ -35,10 +35,14 @@ export interface LegacyOrder {
   updatedAt?: Date;
 }
 
-export interface BillingData {
-  itemId: string; // Which item in the order to bill
+export interface BillingItemData {
+  itemId: string;
   billedStockCount: number;
   price: number;
+}
+
+export interface BillingData {
+  items: BillingItemData[]; // Multiple items can be billed at once
 }
 
 export interface OrderFormData {

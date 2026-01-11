@@ -1,6 +1,7 @@
 import mongoose, { Schema, Document } from "mongoose";
 
 export interface IBilling extends Document {
+  billId: string;
   orderId: mongoose.Types.ObjectId;
   orderOrderId: string;
   itemId: string;
@@ -18,6 +19,10 @@ export interface IBilling extends Document {
 
 const BillingSchema = new Schema<IBilling>(
   {
+    billId: {
+      type: String,
+      required: true, // Required for new entries
+    },
     orderId: {
       type: Schema.Types.ObjectId,
       ref: "Order",
@@ -73,6 +78,7 @@ const BillingSchema = new Schema<IBilling>(
 );
 
 // Indexes
+BillingSchema.index({ billId: 1 });
 BillingSchema.index({ orderId: 1 });
 BillingSchema.index({ orderOrderId: 1 });
 BillingSchema.index({ itemId: 1 });

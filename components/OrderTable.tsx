@@ -7,7 +7,7 @@ interface OrderTableProps {
   orders: Order[];
   onEdit?: (order: Order) => void;
   onDelete?: (orderId: string) => void;
-  onBill?: (order: Order, itemId: string) => void;
+  onBill?: (order: Order) => void;
   showEditDelete?: boolean; // Control whether to show Edit/Delete buttons
   currentPage: number;
   pageSize: number;
@@ -163,12 +163,12 @@ export default function OrderTable({
                   </td>
                   <td className="px-6 py-4 text-right text-sm font-medium">
                     <div className="flex justify-end gap-2 flex-wrap">
-                      {onBill && itemStatus !== "completed" && (
+                      {itemIndex === 0 && onBill && order.status !== "completed" && (
                         <button
-                          onClick={() => onBill(order, item.itemId)}
+                          onClick={() => onBill(order)}
                           className="cursor-pointer rounded-md bg-green-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 transition-all duration-200 whitespace-nowrap"
                         >
-                          Bill
+                          Bill Order
                         </button>
                       )}
                       {itemIndex === 0 && showEditDelete && onEdit && (
