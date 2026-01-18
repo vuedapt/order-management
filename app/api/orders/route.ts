@@ -63,18 +63,42 @@ export async function GET(request: NextRequest) {
       .limit(pageSize)
       .lean();
 
-    // Transform to match frontend format
-    const transformedOrders = orders.map((order: any) => ({
-      id: order._id.toString(),
-      orderId: order.orderId,
-      clientName: order.clientName,
-      items: order.items,
-      date: order.date,
-      time: order.time,
-      status: order.status,
-      createdAt: order.createdAt,
-      updatedAt: order.updatedAt,
-    }));
+    // Transform to match frontend format and filter items if item filters are applied
+    const transformedOrders = orders
+      .map((order: any) => {
+        let filteredItems = order.items;
+        
+        // Filter items within the order if itemId or itemName filters are applied
+        // Use OR logic to match the MongoDB query behavior
+        if (itemId || itemName) {
+          filteredItems = order.items.filter((item: any) => {
+            const matchesItemId = itemId ? new RegExp(itemId, "i").test(item.itemId) : false;
+            const matchesItemName = itemName ? new RegExp(itemName, "i").test(item.itemName) : false;
+            // If both filters are provided, match if either condition is true (OR)
+            // If only one filter is provided, match that condition
+            if (itemId && itemName) {
+              return matchesItemId || matchesItemName;
+            } else if (itemId) {
+              return matchesItemId;
+            } else {
+              return matchesItemName;
+            }
+          });
+        }
+        
+        return {
+          id: order._id.toString(),
+          orderId: order.orderId,
+          clientName: order.clientName,
+          items: filteredItems,
+          date: order.date,
+          time: order.time,
+          status: order.status,
+          createdAt: order.createdAt,
+          updatedAt: order.updatedAt,
+        };
+      })
+      .filter((order: any) => order.items.length > 0); // Exclude orders with no matching items
 
     const totalPages = Math.ceil(total / pageSize);
 
